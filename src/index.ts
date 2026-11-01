@@ -29,3 +29,4 @@ export async function scanProject(options?: {
   const config = options?.config || (await loadConfig(cwd, options?.configPath));
   return runDseScan(config, cwd);
 }
+

@@ -46,6 +46,46 @@ npx dse check
 
 ---
 
+## 🐍 Python Projects Support (Streamlit, Django, Flask, FastAPI)
+
+DSE provides **first-class support for Python projects**! It automatically detects Python repositories (via `requirements.txt`, `pyproject.toml`, or `.streamlit`) and applies the `python` preset without requiring any manual configuration.
+
+### What DSE checks in Python projects:
+- **Embedded CSS in Python / Streamlit** (`st.markdown("""<style>...</style>""")`):
+  - Font sizes below standard 14px floor or exceeding 32px heading caps.
+  - Font weights exceeding 500 (`font-weight: 600`, `font-weight: bold`).
+  - Backdrop blur filter violations.
+  - Hardcoded `#hex` color literals.
+- **Python UI copy and strings**:
+  - Raw text arrows (`->`, `<-`, `→`) in UI labels and buttons.
+  - *(Smart parsing: standard Python return type hints like `def foo() -> int:` are automatically preserved and never falsely flagged).*
+- **Jinja2 and Django HTML templates** (`.html`, `.jinja`).
+
+### How to use in any Python project:
+
+#### Option A: Quick run with `npx` (No Node setup in your Python repo)
+```bash
+# In your Python project directory:
+npx github:not-muzammil/Design-System-Enforcer check
+
+# Or initialize a clean dse.config.json:
+npx github:not-muzammil/Design-System-Enforcer init
+```
+
+#### Option B: Python Pre-Commit Hook (Standard Python workflow)
+Add DSE to your project's `.pre-commit-config.yaml`:
+```yaml
+repos:
+  - repo: https://github.com/not-muzammil/Design-System-Enforcer
+    rev: main
+    hooks:
+      - id: dse
+```
+
+Whenever you or an AI agent run `git commit` or `pre-commit run --all-files`, DSE automatically validates your Python UI!
+
+---
+
 ## 🎨 Theme Customization with AI Agents
 
 When DSE scaffolds primitives and tokens (`npx dse scaffold`), all colors are powered by **standard CSS variables in HSL format**:
@@ -207,3 +247,4 @@ if (process.env.NODE_ENV === "development") {
 ## 📄 License
 
 MIT © [Muzammil](https://github.com/not-muzammil)
+

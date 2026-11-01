@@ -47,3 +47,4 @@ export function generateMarkdownRules(config: DseConfig): string {
 <!-- END:design-system-enforcer-rules -->
 `;
 }
+

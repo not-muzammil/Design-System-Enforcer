@@ -26,14 +26,14 @@ program
 // COMMAND: check (default)
 // ---------------------------------------------------------------------------
 program
-  .command("check", { isDefault: true })
+  .command("check [targetDir]", { isDefault: true })
   .description("Scan codebase and enforce Design System rules")
-  .option("-c, --config <path>", "Path to custom dse.config.js")
+  .option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json")
   .option("-f, --format <format>", "Output format: 'stylish' | 'json'", "stylish")
   .option("--strict", "Treat warnings as errors", false)
-  .action(async (options) => {
+  .action(async (targetDirArg, options) => {
     try {
-      const cwd = process.cwd();
+      const cwd = targetDirArg ? path.resolve(process.cwd(), targetDirArg) : process.cwd();
       const config = await loadConfig(cwd, options.config);
       const result = await runDseScan(config, cwd);
 
@@ -62,17 +62,24 @@ program
 program
   .command("init")
   .description("Initialize DSE configuration and optionally scaffold base primitives")
-  .option("--preset <name>", "Preset to use: 'berserk' | 'recommended'", "berserk")
+  .option("--preset <name>", "Preset to use: 'berserk' | 'recommended' | 'python'")
   .option("--with-primitives", "Scaffold full base primitives and tokens suite", false)
   .action((options) => {
     const cwd = process.cwd();
     console.log(pc.bold(pc.cyan("\nInitializing Design System Enforcer (DSE)...")));
 
-    // 1. Create dse.config.js
-    const configPath = scaffoldConfig(cwd, options.preset);
-    console.log(pc.green("✔ Created config:"), pc.bold(path.relative(cwd, configPath)));
+    const isPythonProject =
+      fs.existsSync(path.resolve(cwd, "requirements.txt")) ||
+      fs.existsSync(path.resolve(cwd, "pyproject.toml")) ||
+      fs.existsSync(path.resolve(cwd, ".streamlit"));
 
-    // 2. Add "dse": "dse" to package.json
+    const preset = options.preset || (isPythonProject ? "python" : "berserk");
+
+    // 1. Create config
+    const configPath = scaffoldConfig(cwd, preset);
+    console.log(pc.green("✔ Created config:"), pc.bold(path.relative(cwd, configPath)), pc.dim(`(preset: ${preset})`));
+
+    // 2. Add "dse": "dse" to package.json if present
     const pkgPath = path.resolve(cwd, "package.json");
     if (fs.existsSync(pkgPath)) {
       try {
@@ -180,3 +187,4 @@ program
   });
 
 program.parse(process.argv);
+

@@ -21,3 +21,4 @@ describe("Config Loader", () => {
     expect(loaded.rules?.["font-size-min"]).toBe("error");
   });
 });
+

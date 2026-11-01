@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import type { DseConfig } from "./types.js";
 import { berserkPreset } from "./presets/berserk.js";
 import { defaultPreset } from "./presets/default.js";
+import { pythonPreset } from "./presets/python.js";
 
 const CONFIG_FILES = [
   "dse.config.js",
@@ -65,9 +66,23 @@ export async function loadConfig(cwd = process.cwd(), customPath?: string): Prom
     }
   }
 
-  // Determine base preset
-  const presetName = userConfig.preset || "berserk";
-  const basePreset = presetName === "recommended" ? defaultPreset : berserkPreset;
+  // Determine base preset (auto-detect python if requirements.txt / pyproject.toml present)
+  let presetName = userConfig.preset;
+  if (!presetName) {
+    const isPython =
+      fs.existsSync(path.resolve(cwd, "requirements.txt")) ||
+      fs.existsSync(path.resolve(cwd, "pyproject.toml")) ||
+      fs.existsSync(path.resolve(cwd, ".streamlit")) ||
+      fs.existsSync(path.resolve(cwd, "manage.py"));
+    presetName = isPython ? "python" : "berserk";
+  }
+
+  let basePreset = berserkPreset;
+  if (presetName === "python") {
+    basePreset = pythonPreset;
+  } else if (presetName === "recommended") {
+    basePreset = defaultPreset;
+  }
 
   return mergeConfigs(basePreset, userConfig);
 }
@@ -121,3 +136,4 @@ function mergeConfigs(base: DseConfig, overrides: Partial<DseConfig>): DseConfig
     },
   };
 }
+

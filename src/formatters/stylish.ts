@@ -64,3 +64,4 @@ export function formatStylish(result: ScanResult): string {
   output.push("");
   return output.join("\n");
 }
+

@@ -5,18 +5,13 @@ import type { DseConfig, ScanResult, Violation } from "../config/types.js";
 import { parseTsx, getFileImports } from "../parser/ast.js";
 import { runAstRules } from "./ast-rules.js";
 import { runRegexRules } from "./regex-rules.js";
+import { runPythonRules } from "./python-rules.js";
 import type { AddViolationFn } from "./types.js";
 
 export async function runDseScan(config: DseConfig, cwd = process.cwd()): Promise<ScanResult> {
-  const targetDir = path.resolve(cwd, config.targetDir || "src");
+  let targetDir = path.resolve(cwd, config.targetDir || "src");
   if (!fs.existsSync(targetDir)) {
-    return {
-      violations: [],
-      scannedFilesCount: 0,
-      errorCount: 0,
-      warningCount: 0,
-      componentInventory: {},
-    };
+    targetDir = cwd;
   }
 
   const includePatterns = config.include || ["**/*.{tsx,jsx,ts,js}"];
@@ -73,30 +68,37 @@ export async function runDseScan(config: DseConfig, cwd = process.cwd()): Promis
     });
   };
 
+  let scannedJsxFiles = false;
+
   for (const filePath of files) {
     const content = fs.readFileSync(filePath, "utf-8");
     const isJsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx") || filePath.endsWith(".ts") || filePath.endsWith(".js");
-
-    // Track component inventory
-    inventoryDef.forEach((comp) => {
-      const names = [comp.componentName || comp.name, ...(comp.altNames || [])];
-      const pattern = new RegExp(`<(?:${names.join("|")})\\b`, "g");
-      if (pattern.test(content)) {
-        inventoryCounts[comp.name] = (inventoryCounts[comp.name] || 0) + 1;
-      }
-    });
+    const isPythonOrTemplate = filePath.endsWith(".py") || filePath.endsWith(".html") || filePath.endsWith(".jinja") || filePath.endsWith(".jinja2") || filePath.endsWith(".css");
 
     if (isJsx) {
+      scannedJsxFiles = true;
+      // Track component inventory
+      inventoryDef.forEach((comp) => {
+        const names = [comp.componentName || comp.name, ...(comp.altNames || [])];
+        const pattern = new RegExp(`<(?:${names.join("|")})\\b`, "g");
+        if (pattern.test(content)) {
+          inventoryCounts[comp.name] = (inventoryCounts[comp.name] || 0) + 1;
+        }
+      });
+
       const sourceFile = parseTsx(filePath, content);
       const fileImports = getFileImports(sourceFile);
       runAstRules(sourceFile, filePath, addViolation, fileImports, config);
+      runRegexRules(content, filePath, addViolation, config);
+    } else if (isPythonOrTemplate) {
+      runPythonRules(content, filePath, addViolation, config);
+    } else {
+      runRegexRules(content, filePath, addViolation, config);
     }
-
-    runRegexRules(content, filePath, addViolation, config);
   }
 
-  // Component inventory verification
-  if (config.rules?.["component-inventory-active"] !== "off") {
+  // Component inventory verification (only if JSX/TSX components are in scope)
+  if (scannedJsxFiles && config.rules?.["component-inventory-active"] !== "off") {
     inventoryDef.forEach((comp) => {
       const count = inventoryCounts[comp.name] || 0;
       if (count === 0) {

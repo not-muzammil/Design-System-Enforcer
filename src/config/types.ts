@@ -67,7 +67,7 @@ export interface RulesConfig {
 }
 
 export interface DseConfig {
-  preset?: "berserk" | "recommended" | "minimal";
+  preset?: "berserk" | "recommended" | "minimal" | "python";
   targetDir?: string;
   include?: string[];
   exclude?: string[];
@@ -97,3 +97,4 @@ export interface ScanResult {
   warningCount: number;
   componentInventory: Record<string, { active: boolean; fileCount: number }>;
 }
+

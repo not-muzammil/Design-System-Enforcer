@@ -55,3 +55,4 @@ describe("DSE Rules Enforcement", () => {
     expect(violations.some((v) => v.rule === "no-backdrop-blur")).toBe(true);
   });
 });
+

@@ -29,6 +29,30 @@ export const COMPONENT_TEMPLATES: Record<string, { filename: string; content: st
 };
 
 export function scaffoldConfig(cwd = process.cwd(), preset = "berserk"): string {
+  if (preset === "python") {
+    const jsonPath = path.resolve(cwd, "dse.config.json");
+    if (fs.existsSync(jsonPath)) return jsonPath;
+
+    const content = JSON.stringify(
+      {
+        preset: "python",
+        targetDir: ".",
+        include: ["**/*.{py,html,jinja,jinja2,css}"],
+        exclude: [
+          "**/.venv/**",
+          "**/venv/**",
+          "**/__pycache__/**",
+          "**/.pytest_cache/**",
+          "**/.git/**",
+        ],
+      },
+      null,
+      2
+    ) + "\n";
+    fs.writeFileSync(jsonPath, content, "utf-8");
+    return jsonPath;
+  }
+
   const configPath = path.resolve(cwd, "dse.config.js");
   if (fs.existsSync(configPath)) {
     return configPath;
@@ -117,3 +141,4 @@ export function scaffoldAllPrimitives(cwd = process.cwd()): string[] {
 
   return created;
 }
+

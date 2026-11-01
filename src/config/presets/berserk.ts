@@ -124,3 +124,4 @@ export const berserkPreset: DseConfig = {
     "component-inventory-active": "error",
   },
 };
+

@@ -16,3 +16,4 @@ export interface RuleContext {
   config: DseConfig;
   addViolation: AddViolationFn;
 }
+

@@ -56,3 +56,4 @@ describe("Token Decompiler & Evaluator", () => {
     expect(violations[0].rule).toBe("no-banned-colors");
   });
 });
+
