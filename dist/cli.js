@@ -1,0 +1,2240 @@
+// src/cli.ts
+import fs4 from "fs";
+import path4 from "path";
+import { Command } from "commander";
+import pc2 from "picocolors";
+
+// src/config/loader.ts
+import fs from "fs";
+import path from "path";
+import { pathToFileURL } from "url";
+
+// src/config/presets/berserk.ts
+var berserkPreset = {
+  preset: "berserk",
+  targetDir: "src",
+  include: ["**/*.{tsx,jsx,ts,js}"],
+  exclude: [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/public/**",
+    "**/.git/**",
+    "**/dist/**",
+    "src/lib/primitives.ts",
+    "src/lib/tokens.ts",
+    "src/lib/dse-scanner.ts",
+    "src/app/globals.css",
+    "src/components/ui/badge.tsx",
+    "src/components/ui/button.tsx",
+    "src/components/ui/buttony-icon.tsx",
+    "src/components/ui/card.tsx",
+    "src/components/ui/checkbox.tsx",
+    "src/components/ui/chip.tsx",
+    "src/components/ui/dropdown.tsx",
+    "src/components/ui/floating-action-bar.tsx",
+    "src/components/ui/folder-combobox.tsx",
+    "src/components/ui/icon-button.tsx",
+    "src/components/ui/input.tsx",
+    "src/components/ui/portal.tsx",
+    "src/components/ui/skeleton.tsx",
+    "src/components/ui/spinner.tsx",
+    "src/components/ui/table.tsx",
+    "src/components/ui/tabs.tsx",
+    "src/components/ui/textarea.tsx",
+    "src/components/ui/toggle.tsx",
+    "src/components/ui/tooltip.tsx",
+    "src/components/design-system/**",
+    "src/db/**",
+    "src/app/api/**",
+    "src/engine/**",
+    "src/services/**",
+    "src/lib/auth/two-factor.ts"
+  ],
+  tokens: {
+    typography: {
+      minFontSize: "14px",
+      maxFontSize: "32px",
+      maxFontWeight: 500,
+      disallowArbitrarySizes: true,
+      disallowUppercase: true,
+      allowXsOn: []
+    },
+    geometry: {
+      maxControlHeight: 36,
+      allowedRadii: ["0", "0px", "8px", "12px", "16px", "9999px", "100%"],
+      radiiExceptions: {
+        Checkbox: ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"]
+      }
+    },
+    colors: {
+      bannedColorFamilies: [
+        "slate",
+        "gray",
+        "zinc",
+        "stone",
+        "orange",
+        "yellow",
+        "lime",
+        "green",
+        "teal",
+        "cyan",
+        "sky",
+        "indigo",
+        "violet",
+        "purple",
+        "fuchsia",
+        "pink",
+        "rose"
+      ],
+      disallowRawHex: true,
+      disallowButtonChipColors: true,
+      disallowSaturatedGradients: true
+    }
+  },
+  components: {
+    disallowRawHtml: {
+      button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
+      select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true },
+      table: { replaceWith: "Table", importFrom: "@/components/ui/table", checkRawElement: true },
+      thead: { replaceWith: "TableHeader", importFrom: "@/components/ui/table", checkRawElement: true },
+      tbody: { replaceWith: "TableBody", importFrom: "@/components/ui/table", checkRawElement: true },
+      tr: { replaceWith: "TableRow", importFrom: "@/components/ui/table", checkRawElement: true },
+      th: { replaceWith: "TableHead", importFrom: "@/components/ui/table", checkRawElement: true },
+      td: { replaceWith: "TableCell", importFrom: "@/components/ui/table", checkRawElement: true }
+    },
+    disallowPseudoChips: true,
+    requiredInventory: [
+      { name: "Button", componentName: "Button", importPath: "@/components/ui/button" },
+      { name: "Input", componentName: "Input", importPath: "@/components/ui/input" },
+      { name: "Chip", altNames: ["Chip", "Badge"], componentName: "Chip", importPath: "@/components/ui/chip" },
+      { name: "Card", componentName: "Card", importPath: "@/components/ui/card" },
+      { name: "Dropdown", componentName: "Dropdown", importPath: "@/components/ui/dropdown" },
+      { name: "FloatingActionBar", componentName: "FloatingActionBar", importPath: "@/components/ui/floating-action-bar" },
+      { name: "FolderCombobox", componentName: "FolderCombobox", importPath: "@/components/ui/folder-combobox" },
+      { name: "IconButton", altNames: ["ButtonyIcon", "IconButton"], componentName: "IconButton", importPath: "@/components/ui/icon-button" },
+      { name: "Skeleton", altNames: ["Skeleton", "CardSkeleton", "TableSkeleton", "MetricsGridSkeleton"], componentName: "Skeleton", importPath: "@/components/ui/skeleton" },
+      { name: "Table", altNames: ["Table", "DataTableContainer", "DataTableScrollArea", "TableHeader", "TableBody", "TableRow", "TableCell", "TableHead"], componentName: "Table", importPath: "@/components/ui/table" },
+      { name: "Tabs", altNames: ["Tabs"], componentName: "Tabs", importPath: "@/components/ui/tabs" },
+      { name: "Checkbox", altNames: ["Checkbox"], componentName: "Checkbox", importPath: "@/components/ui/checkbox" },
+      { name: "Toggle", altNames: ["Toggle"], componentName: "Toggle", importPath: "@/components/ui/toggle" },
+      { name: "Textarea", altNames: ["Textarea"], componentName: "Textarea", importPath: "@/components/ui/textarea" }
+    ]
+  },
+  rules: {
+    "font-size-min": "error",
+    "font-size-max": "error",
+    "font-weight-max": "error",
+    "no-arbitrary-text-size": "error",
+    "no-uppercase-text": "error",
+    "control-height-max": "error",
+    "corner-radius-allowed": "error",
+    "no-banned-colors": "error",
+    "no-raw-hex-colors": "error",
+    "no-raw-html-elements": "error",
+    "no-pseudo-chips": "error",
+    "no-chip-colored-buttons": "error",
+    "no-text-arrows": "error",
+    "no-backdrop-blur": "error",
+    "no-unapproved-gradients": "error",
+    "modal-backdrop-standard": "error",
+    "table-resizable-required": "error",
+    "table-head-icon-required": "error",
+    "table-single-border": "error",
+    "table-no-divide-y": "error",
+    "table-uniform-typography": "error",
+    "table-no-cell-stacking": "error",
+    "table-no-horizontal-stacking": "error",
+    "table-windowed-pagination": "error",
+    "tabs-component-required": "error",
+    "component-inventory-active": "error"
+  }
+};
+
+// src/config/presets/default.ts
+var defaultPreset = {
+  preset: "recommended",
+  targetDir: "src",
+  include: ["**/*.{tsx,jsx,ts,js}"],
+  exclude: [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/public/**",
+    "**/.git/**",
+    "**/dist/**"
+  ],
+  tokens: {
+    typography: {
+      minFontSize: "14px",
+      maxFontSize: "36px",
+      maxFontWeight: 600,
+      disallowArbitrarySizes: false,
+      disallowUppercase: true,
+      allowXsOn: []
+    },
+    geometry: {
+      maxControlHeight: 40,
+      allowedRadii: ["0", "0px", "4px", "6px", "8px", "12px", "16px", "9999px", "100%"]
+    },
+    colors: {
+      disallowRawHex: false,
+      disallowButtonChipColors: true
+    }
+  },
+  components: {
+    disallowRawHtml: {
+      button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
+      select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true }
+    },
+    disallowPseudoChips: true
+  },
+  rules: {
+    "font-size-min": "error",
+    "no-uppercase-text": "warn",
+    "no-raw-html-elements": "error",
+    "no-pseudo-chips": "warn",
+    "no-chip-colored-buttons": "error",
+    "no-text-arrows": "error",
+    "no-backdrop-blur": "warn"
+  }
+};
+
+// src/config/presets/python.ts
+var pythonPreset = {
+  preset: "recommended",
+  targetDir: ".",
+  include: ["**/*.{py,html,jinja,jinja2,css,tsx,jsx,js,ts}"],
+  exclude: [
+    "**/.venv/**",
+    "**/venv/**",
+    "**/__pycache__/**",
+    "**/.pytest_cache/**",
+    "**/.mypy_cache/**",
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/*.egg-info/**"
+  ],
+  tokens: {
+    typography: {
+      minFontSize: "14px",
+      maxFontSize: "32px",
+      maxFontWeight: 500,
+      disallowArbitrarySizes: true,
+      disallowUppercase: true,
+      allowXsOn: []
+    },
+    geometry: {
+      maxControlHeight: 36,
+      allowedRadii: ["0px", "8px", "12px", "16px", "9999px"]
+    },
+    colors: {
+      disallowRawHex: true,
+      disallowButtonChipColors: true
+    }
+  },
+  components: {
+    disallowRawHtml: {},
+    requiredInventory: []
+  },
+  rules: {
+    "font-size-min": "error",
+    "font-size-max": "error",
+    "font-weight-max": "error",
+    "no-uppercase-text": "warn",
+    "no-raw-hex-colors": "off",
+    "no-text-arrows": "error",
+    "no-backdrop-blur": "error",
+    "table-resizable-required": "off",
+    "table-head-icon-required": "off",
+    "table-single-border": "off",
+    "table-no-divide-y": "off",
+    "table-uniform-typography": "off",
+    "table-no-cell-stacking": "off",
+    "table-no-horizontal-stacking": "off",
+    "table-windowed-pagination": "off",
+    "tabs-component-required": "off",
+    "component-inventory-active": "off"
+  }
+};
+
+// src/config/loader.ts
+var CONFIG_FILES = [
+  "dse.config.js",
+  "dse.config.mjs",
+  "dse.config.cjs",
+  "dse.config.ts",
+  "dse.config.json",
+  ".dserc.json",
+  ".dserc"
+];
+async function loadConfig(cwd = process.cwd(), customPath) {
+  let userConfig = {};
+  let foundConfigPath = null;
+  if (customPath) {
+    const resolved = path.resolve(cwd, customPath);
+    if (fs.existsSync(resolved)) {
+      foundConfigPath = resolved;
+    }
+  } else {
+    for (const filename of CONFIG_FILES) {
+      const candidate = path.resolve(cwd, filename);
+      if (fs.existsSync(candidate)) {
+        foundConfigPath = candidate;
+        break;
+      }
+    }
+  }
+  if (foundConfigPath) {
+    if (foundConfigPath.endsWith(".json") || foundConfigPath.endsWith(".dserc")) {
+      const content = fs.readFileSync(foundConfigPath, "utf-8");
+      try {
+        userConfig = JSON.parse(content);
+      } catch (err) {
+        console.error(`Failed to parse JSON config at ${foundConfigPath}:`, err);
+      }
+    } else {
+      try {
+        const fileUrl = pathToFileURL(foundConfigPath).href;
+        const mod = await import(fileUrl);
+        userConfig = mod.default || mod;
+      } catch {
+        try {
+          const content = fs.readFileSync(foundConfigPath, "utf-8");
+          const cjsReq = createCjsEvaluator(foundConfigPath, content);
+          userConfig = cjsReq;
+        } catch (innerErr) {
+          console.warn(`Could not load config file at ${foundConfigPath}, using default preset.`, innerErr);
+        }
+      }
+    }
+  }
+  let presetName = userConfig.preset;
+  if (!presetName) {
+    const isPython = fs.existsSync(path.resolve(cwd, "requirements.txt")) || fs.existsSync(path.resolve(cwd, "pyproject.toml")) || fs.existsSync(path.resolve(cwd, ".streamlit")) || fs.existsSync(path.resolve(cwd, "manage.py"));
+    presetName = isPython ? "python" : "berserk";
+  }
+  let basePreset = berserkPreset;
+  if (presetName === "python") {
+    basePreset = pythonPreset;
+  } else if (presetName === "recommended") {
+    basePreset = defaultPreset;
+  }
+  return mergeConfigs(basePreset, userConfig);
+}
+function createCjsEvaluator(filePath, content) {
+  if (content.includes("export default")) {
+    return {};
+  }
+  return {};
+}
+function mergeConfigs(base, overrides) {
+  return {
+    ...base,
+    ...overrides,
+    preset: overrides.preset || base.preset,
+    targetDir: overrides.targetDir || base.targetDir,
+    include: overrides.include || base.include,
+    exclude: [...base.exclude || [], ...overrides.exclude || []],
+    tokens: {
+      typography: {
+        ...base.tokens?.typography || {},
+        ...overrides.tokens?.typography || {}
+      },
+      geometry: {
+        ...base.tokens?.geometry || {},
+        ...overrides.tokens?.geometry || {},
+        radiiExceptions: {
+          ...base.tokens?.geometry?.radiiExceptions || {},
+          ...overrides.tokens?.geometry?.radiiExceptions || {}
+        }
+      },
+      colors: {
+        ...base.tokens?.colors || {},
+        ...overrides.tokens?.colors || {}
+      }
+    },
+    components: {
+      disallowRawHtml: {
+        ...base.components?.disallowRawHtml || {},
+        ...overrides.components?.disallowRawHtml || {}
+      },
+      disallowPseudoChips: overrides.components?.disallowPseudoChips ?? base.components?.disallowPseudoChips,
+      requiredInventory: overrides.components?.requiredInventory || base.components?.requiredInventory
+    },
+    rules: {
+      ...base.rules || {},
+      ...overrides.rules || {}
+    }
+  };
+}
+
+// src/rules/runner.ts
+import fs2 from "fs";
+import path2 from "path";
+import fg from "fast-glob";
+
+// src/parser/ast.ts
+import ts from "typescript";
+function parseTsx(filePath, content) {
+  const isTsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
+  const kind = isTsx ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  return ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    // setParentNodes = true for parent traversal
+    kind
+  );
+}
+function getNodePosition(sourceFile, node) {
+  const start = node.getStart(sourceFile);
+  const { line, character } = sourceFile.getLineAndCharacterOfPosition(start);
+  return { line: line + 1, col: character + 1 };
+}
+function getJsxTagName(node, sourceFile) {
+  if (ts.isJsxElement(node)) {
+    return node.openingElement.tagName.getText(sourceFile);
+  }
+  if (ts.isJsxSelfClosingElement(node)) {
+    return node.tagName.getText(sourceFile);
+  }
+  if (ts.isJsxOpeningElement(node)) {
+    return node.tagName.getText(sourceFile);
+  }
+  return null;
+}
+function getJsxAttributes(node, sourceFile) {
+  const attributes = {};
+  const propContainer = ts.isJsxElement(node) ? node.openingElement.attributes : ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node) ? node.attributes : null;
+  if (!propContainer) return attributes;
+  propContainer.properties.forEach((prop) => {
+    if (ts.isJsxAttribute(prop)) {
+      const name = prop.name.getText(sourceFile);
+      attributes[name] = {
+        node: prop,
+        initializer: prop.initializer || null,
+        rawText: prop.getText(sourceFile)
+      };
+    } else if (ts.isJsxSpreadAttribute(prop)) {
+      attributes[`__spread_${prop.getStart(sourceFile)}`] = {
+        node: prop,
+        isSpread: true,
+        rawText: prop.getText(sourceFile)
+      };
+    }
+  });
+  return attributes;
+}
+function extractClassNames(initializer, sourceFile) {
+  const result = [];
+  if (!initializer) return result;
+  function collectStrings(node) {
+    if (!node) return;
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      result.push({ text: node.text, node });
+      return;
+    }
+    if (ts.isTemplateExpression(node)) {
+      if (node.head.text) {
+        result.push({ text: node.head.text, node: node.head });
+      }
+      for (const span of node.templateSpans) {
+        collectStrings(span.expression);
+        if (span.literal.text) {
+          result.push({ text: span.literal.text, node: span.literal });
+        }
+      }
+      return;
+    }
+    if (ts.isJsxExpression(node)) {
+      collectStrings(node.expression);
+      return;
+    }
+    if (ts.isParenthesizedExpression(node)) {
+      collectStrings(node.expression);
+      return;
+    }
+    if (ts.isBinaryExpression(node)) {
+      collectStrings(node.left);
+      collectStrings(node.right);
+      return;
+    }
+    if (ts.isConditionalExpression(node)) {
+      collectStrings(node.whenTrue);
+      collectStrings(node.whenFalse);
+      return;
+    }
+    if (ts.isArrayLiteralExpression(node)) {
+      for (const element of node.elements) {
+        collectStrings(element);
+      }
+      return;
+    }
+    if (ts.isCallExpression(node)) {
+      for (const arg of node.arguments) {
+        collectStrings(arg);
+      }
+      return;
+    }
+    if (ts.isObjectLiteralExpression(node)) {
+      for (const prop of node.properties) {
+        if (ts.isPropertyAssignment(prop)) {
+          if (ts.isStringLiteral(prop.name) || ts.isIdentifier(prop.name)) {
+            result.push({ text: prop.name.text, node: prop.name });
+          }
+        }
+      }
+      return;
+    }
+  }
+  collectStrings(initializer);
+  return result;
+}
+function getFileImports(sourceFile) {
+  const imports = {};
+  ts.forEachChild(sourceFile, (node) => {
+    if (ts.isImportDeclaration(node) && node.importClause) {
+      const moduleSpecifier = ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : "";
+      if (node.importClause.name) {
+        imports[node.importClause.name.text] = moduleSpecifier;
+      }
+      if (node.importClause.namedBindings) {
+        if (ts.isNamedImports(node.importClause.namedBindings)) {
+          node.importClause.namedBindings.elements.forEach((spec) => {
+            const localName = spec.name.text;
+            imports[localName] = moduleSpecifier;
+          });
+        } else if (ts.isNamespaceImport(node.importClause.namedBindings)) {
+          imports[node.importClause.namedBindings.name.text] = moduleSpecifier;
+        }
+      }
+    }
+  });
+  return imports;
+}
+
+// src/rules/ast-rules.ts
+import ts2 from "typescript";
+
+// src/tokens/index.ts
+function splitClassString(str) {
+  if (!str || typeof str !== "string") return [];
+  return str.split(/\s+/).filter(Boolean);
+}
+function decomposeToken(rawToken) {
+  if (!rawToken || typeof rawToken !== "string") return null;
+  const parts = [];
+  let bracketDepth = 0;
+  let current = "";
+  for (let i = 0; i < rawToken.length; i++) {
+    const char = rawToken[i];
+    if (char === "[" || char === "(") {
+      bracketDepth++;
+      current += char;
+    } else if (char === "]" || char === ")") {
+      bracketDepth = Math.max(0, bracketDepth - 1);
+      current += char;
+    } else if (char === ":" && bracketDepth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (current) parts.push(current);
+  const core = parts.pop() || "";
+  const variants = parts;
+  return { raw: rawToken, core, variants };
+}
+function evaluateTypographyToken(core, config) {
+  const violations = [];
+  const minFont = config?.minFontSize || "14px";
+  const maxFont = config?.maxFontSize || "32px";
+  const maxWeight = config?.maxFontWeight ?? 500;
+  const disallowArbitrary = config?.disallowArbitrarySizes ?? true;
+  const disallowUppercase = config?.disallowUppercase ?? true;
+  if (/^text-(?:xs|2xs)$/.test(core)) {
+    violations.push({
+      rule: "font-size-min",
+      message: `Disallowed font size '${core}' is smaller than ${minFont}. Primary body font must strictly be standard ${minFont} ('text-sm').`
+    });
+  }
+  const arbitrarySizeMatch = core.match(/^text-\[(\d+(?:\.\d+)?)(px|rem|em)\]$/);
+  if (arbitrarySizeMatch) {
+    const num = parseFloat(arbitrarySizeMatch[1]);
+    const unit = arbitrarySizeMatch[2];
+    const pxVal = unit === "rem" || unit === "em" ? num * 16 : num;
+    if (pxVal < 14) {
+      violations.push({
+        rule: "font-size-min",
+        message: `Disallowed arbitrary font size '${core}' (${pxVal}px) is below minimum allowed size (${minFont}).`
+      });
+    } else if (pxVal > 32) {
+      violations.push({
+        rule: "font-size-max",
+        message: `Disallowed arbitrary font size '${core}' (${pxVal}px) exceeds maximum allowed heading size (${maxFont}).`
+      });
+    } else if (disallowArbitrary) {
+      violations.push({
+        rule: "no-arbitrary-text-size",
+        message: `Arbitrary font size '${core}' is prohibited. Use standard typography tokens ('text-sm', 'text-base', 'text-lg', 'text-xl', 'text-2xl').`
+      });
+    }
+  }
+  if (/^text-(?:3xl|4xl|5xl|6xl|7xl|8xl|9xl)$/.test(core)) {
+    violations.push({
+      rule: "font-size-max",
+      message: `Disallowed font size '${core}' exceeds maximum allowed heading cap of ${maxFont}.`
+    });
+  }
+  if (maxWeight <= 500) {
+    if (/^font-(?:semibold|bold|extrabold|black)$/.test(core)) {
+      violations.push({
+        rule: "font-weight-max",
+        message: `Disallowed font weight '${core}' exceeds maximum allowed weight (500 / Medium).`
+      });
+    }
+    const arbitraryWeightMatch = core.match(/^font-\[(\d+)\]$/);
+    if (arbitraryWeightMatch) {
+      const weight = parseInt(arbitraryWeightMatch[1], 10);
+      if (weight > maxWeight) {
+        violations.push({
+          rule: "font-weight-max",
+          message: `Disallowed arbitrary font weight '${core}' (${weight}) exceeds maximum allowed weight (${maxWeight} / Medium).`
+        });
+      }
+    }
+  }
+  if (disallowUppercase && core === "uppercase") {
+    violations.push({
+      rule: "no-uppercase-text",
+      message: `CSS text transformation '${core}' is disallowed. Use standard sentence case or title case.`
+    });
+  }
+  return violations;
+}
+function evaluateGeometryToken(core, config, isCheckbox = false) {
+  const violations = [];
+  const allowedRadii = new Set(config?.allowedRadii || ["0", "0px", "8px", "12px", "16px", "9999px", "100%"]);
+  const checkboxRadii = new Set(config?.radiiExceptions?.Checkbox || ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"]);
+  if (/^rounded(?:-(?:xs|sm|md|lg|xl|2xl|3xl|none|full))?$/.test(core)) {
+    if (core === "rounded-xs" || core === "rounded") {
+      if (!isCheckbox) {
+        violations.push({
+          rule: "corner-radius-allowed",
+          message: `4px corner radius ('${core}') is strictly reserved for checkboxes only. Standard components must use 'rounded-md' (8px) or 'rounded-lg' (12px).`
+        });
+      }
+    } else if (core === "rounded-2xl" || core === "rounded-3xl") {
+      violations.push({
+        rule: "corner-radius-allowed",
+        message: `Oversized corner radius '${core}' is disallowed. Standard components must use 'rounded-md' (8px) or 'rounded-lg' (12px).`
+      });
+    }
+  }
+  const radiusMatch = core.match(/^rounded(?:-[trblse])?-\[([^\]]+)\]$/);
+  if (radiusMatch) {
+    const val = radiusMatch[1].trim();
+    const effectiveSet = isCheckbox ? checkboxRadii : allowedRadii;
+    if (!effectiveSet.has(val)) {
+      violations.push({
+        rule: "corner-radius-allowed",
+        message: `Disallowed arbitrary corner radius '${core}' (${val}). Allowed values: ${Array.from(effectiveSet).join(", ")}.`
+      });
+    }
+  }
+  return violations;
+}
+function evaluateColorToken(core, config) {
+  const violations = [];
+  const bannedFamilies = new Set(config?.bannedColorFamilies || []);
+  if (bannedFamilies.size > 0) {
+    const colorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-([a-z]+)-[0-9]{2,3}$/);
+    if (colorMatch) {
+      const family = colorMatch[1];
+      if (bannedFamilies.has(family)) {
+        violations.push({
+          rule: "no-banned-colors",
+          message: `Disallowed off-palette color class '${core}'. Color family '${family}' (purple, indigo, violet, etc.) is not permitted in our design system.`
+        });
+      }
+    }
+  }
+  if (config?.disallowSaturatedGradients) {
+    if (core === "bg-clip-text" || core === "text-transparent") {
+      violations.push({
+        rule: "no-unapproved-gradients",
+        message: `Gradient text styling '${core}' detected. Cheesy AI gradient text is prohibited. Use standard high-contrast text typography.`
+      });
+    }
+  }
+  return violations;
+}
+
+// src/rules/ast-rules.ts
+function runAstRules(sourceFile, filePath, addViolation, fileImports, config) {
+  const isTsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
+  if (!isTsx) return;
+  const content = sourceFile.getFullText();
+  const fileLines = content.split("\n");
+  let hasTable = false;
+  let hasTableHeader = false;
+  let hasTableHead = false;
+  let hasTableBody = false;
+  let hasTableRow = false;
+  let hasTableCell = false;
+  let usesColumnHeader = false;
+  let usesResizeDivider = false;
+  let usesResizableHook = false;
+  function visitNode(node, parent, ancestors) {
+    if (ts2.isJsxElement(node) || ts2.isJsxSelfClosingElement(node)) {
+      const tagName = getJsxTagName(node, sourceFile);
+      if (!tagName) return;
+      const attributes = getJsxAttributes(node, sourceFile);
+      const pos = getNodePosition(sourceFile, node);
+      const lineSnippet = fileLines[pos.line - 1] || "";
+      if (lineSnippet.includes("dse-ignore") || pos.line > 1 && fileLines[pos.line - 2]?.includes("dse-ignore")) {
+        return;
+      }
+      if (tagName === "Table") hasTable = true;
+      else if (tagName === "TableHeader") hasTableHeader = true;
+      else if (tagName === "TableHead") hasTableHead = true;
+      else if (tagName === "TableBody") hasTableBody = true;
+      else if (tagName === "TableRow") hasTableRow = true;
+      else if (tagName === "TableCell") hasTableCell = true;
+      else if (tagName === "TableColumnHeader") usesColumnHeader = true;
+      else if (tagName === "TableResizeDivider") usesResizeDivider = true;
+      if (config.rules?.["no-raw-html-elements"] !== "off") {
+        checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config);
+      }
+      checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config);
+      if (tagName === "TableHead") {
+        checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config);
+      }
+      if (tagName === "TableBody" && config.rules?.["table-no-divide-y"] !== "off") {
+        checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineSnippet, sourceFile);
+      }
+      if (tagName === "TableCell") {
+        checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config);
+      }
+      if (tagName === "Tabs" && config.rules?.["tabs-component-required"] !== "off") {
+        checkTabsElement(attributes, pos, filePath, addViolation, lineSnippet, fileImports);
+      }
+      if ((tagName === "span" || tagName === "div") && config.rules?.["no-pseudo-chips"] !== "off") {
+        checkPseudoChips(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile);
+      }
+      checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config);
+    }
+    if (ts2.isCallExpression(node)) {
+      const fnName = node.expression.getText(sourceFile);
+      if (fnName === "useResizableColumns") {
+        usesResizableHook = true;
+      }
+    }
+  }
+  function walk(node, parent, ancestors) {
+    visitNode(node, parent, ancestors);
+    ancestors.push(node);
+    ts2.forEachChild(node, (child) => walk(child, node, ancestors));
+    ancestors.pop();
+  }
+  walk(sourceFile, null, []);
+  checkTableFileInvariants(
+    filePath,
+    content,
+    addViolation,
+    fileImports,
+    hasTable,
+    hasTableHeader,
+    hasTableHead,
+    hasTableBody,
+    hasTableRow,
+    hasTableCell,
+    usesColumnHeader,
+    usesResizeDivider,
+    usesResizableHook,
+    config
+  );
+}
+function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config) {
+  if (tagName[0] !== tagName[0].toLowerCase()) {
+    return;
+  }
+  const replacements = config.components?.disallowRawHtml || {};
+  const configEntry = replacements[tagName.toLowerCase()];
+  if (configEntry) {
+    addViolation(
+      filePath,
+      pos.line,
+      pos.col,
+      "no-raw-html-elements",
+      `Raw '<${tagName}>' element detected. Use standard design system '<${configEntry.replaceWith}>' component${configEntry.importFrom ? ` from '${configEntry.importFrom}'` : ""}.`,
+      lineSnippet
+    );
+    return;
+  }
+  if (tagName === "input") {
+    const typeAttr = attributes.type;
+    const typeVal = typeAttr && typeAttr.initializer ? typeAttr.initializer.getText().replace(/['"]/g, "") : "text";
+    if (typeVal === "checkbox") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="checkbox">' detected. Use standard design system '<Checkbox>' or '<Toggle>'.`,
+        lineSnippet
+      );
+    } else if (["text", "email", "search"].includes(typeVal)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
+        lineSnippet
+      );
+    }
+  }
+}
+function checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config) {
+  const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
+  if (!isButton) return;
+  if (config.rules?.["no-chip-colored-buttons"] !== "off" && attributes.variant && attributes.variant.initializer) {
+    const varVal = attributes.variant.initializer.getText().replace(/['"]/g, "");
+    if (["danger", "success", "warning", "error"].includes(varVal)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-chip-colored-buttons",
+        `Button uses semantic chip variant '${varVal}'. Buttons must use neutral variants ('primary', 'outline', 'secondary', 'ghost'). Semantic colors are reserved for <Chip>.`,
+        lineSnippet
+      );
+    }
+  }
+}
+function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config) {
+  const hasIconProp = Boolean(attributes.icon);
+  const rawChildren = node.getText(sourceFile);
+  const isCheckboxCol = /<(?:Checkbox\b|input[^>]*type=["']checkbox["'])/i.test(rawChildren) || /toggleSelect/i.test(rawChildren) || /selectedEmails|selectedIds|selectedLeadIds/i.test(rawChildren) || attributes.resizable?.initializer?.getText(sourceFile) === "{false}" && /checkbox/i.test(rawChildren);
+  if (config.rules?.["table-head-icon-required"] !== "off" && !hasIconProp && !isCheckboxCol) {
+    addViolation(
+      filePath,
+      pos.line,
+      pos.col,
+      "table-head-icon-required",
+      "<TableHead> is missing mandatory 'icon' prop (e.g. icon={<SomeIcon size={20} />}). All table headers must provide an icon component via the 'icon' prop.",
+      lineSnippet
+    );
+  }
+  if (config.rules?.["table-resizable-required"] !== "off" && attributes.resizable && attributes.resizable.initializer) {
+    const resizableVal = attributes.resizable.initializer.getText(sourceFile);
+    if (resizableVal === "{false}" && !isCheckboxCol) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "table-resizable-required",
+        "Table column header '<TableHead>' has disabled resizable columns with 'resizable={false}'. All data table columns must support column resizing.",
+        lineSnippet
+      );
+    }
+  }
+  if (config.rules?.["table-no-horizontal-stacking"] !== "off") {
+    if (/(?:email\s*(?:&|\/)\s*deliverability|deliverability\s*(?:&|\/)\s*email|pages\s*(?:&|\/)\s*dupes|warmup\s*(?:&|\/)\s*deliverability)/i.test(rawChildren)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "table-no-horizontal-stacking",
+        "Combined column header detected in '<TableHead>'. Distinct metadata attributes must each reside in their own dedicated, resizable column with a distinct icon.",
+        lineSnippet
+      );
+    }
+  }
+}
+function checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineSnippet, sourceFile) {
+  if (attributes.className) {
+    const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+    classStrings.forEach(({ text }) => {
+      if (/\bdivide-y\b/.test(text)) {
+        addViolation(
+          filePath,
+          pos.line,
+          pos.col,
+          "table-no-divide-y",
+          "Disallowed 'divide-y' detected on '<TableBody>'. In our design system, TableRow natively implements single 'border-b border-neutral-200'. Using 'divide-y' produces double stroke borders.",
+          lineSnippet
+        );
+      }
+    });
+  }
+}
+function checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config) {
+  if (attributes && attributes.colSpan) return;
+  const childrenText = node.getText(sourceFile);
+  let hasVerticalStack = false;
+  let directBlockCount = 0;
+  if (node.children) {
+    node.children.forEach((child) => {
+      if (ts2.isJsxElement(child) || ts2.isJsxSelfClosingElement(child)) {
+        const tag = getJsxTagName(child, sourceFile);
+        if (tag && ["div", "p", "h1", "h2", "h3", "h4", "h5", "h6"].includes(tag)) {
+          directBlockCount++;
+        }
+      }
+    });
+  }
+  function inspectCellDescendant(child) {
+    if (ts2.isJsxElement(child) || ts2.isJsxSelfClosingElement(child)) {
+      const childTag = getJsxTagName(child, sourceFile);
+      const childAttrs = getJsxAttributes(child, sourceFile);
+      if (childAttrs.className) {
+        const classes = extractClassNames(childAttrs.className.initializer, sourceFile);
+        classes.forEach(({ text }) => {
+          if (/\b(?:flex-col|grid-cols-1|space-y-\d+)\b/.test(text)) {
+            hasVerticalStack = true;
+          }
+        });
+      }
+      if (config.rules?.["table-uniform-typography"] !== "off") {
+        const isExempt = childTag && ["Button", "IconButton", "ButtonyIcon", "Chip", "Badge", "Input", "Skeleton"].includes(childTag);
+        if (!isExempt && childAttrs.className) {
+          const classes = extractClassNames(childAttrs.className.initializer, sourceFile);
+          classes.forEach(({ text }) => {
+            const tokens = splitClassString(text);
+            tokens.forEach((t) => {
+              const dec = decomposeToken(t);
+              if (!dec) return;
+              if (/^text-neutral-(?:400|500|600|700|800)$/.test(dec.core)) {
+                const childPos = getNodePosition(sourceFile, child);
+                addViolation(
+                  filePath,
+                  childPos.line,
+                  childPos.col,
+                  "table-uniform-typography",
+                  `Mismatched table text styling '${dec.core}' inside '<TableCell>'. Text in tables must use uniform styling ('text-text-primary').`,
+                  lineSnippet
+                );
+              }
+              if (/^text-(?:xs|2xs|base|lg|xl|2xl|3xl|4xl|5xl|\[[0-9]+px\])$/.test(dec.core)) {
+                const childPos = getNodePosition(sourceFile, child);
+                addViolation(
+                  filePath,
+                  childPos.line,
+                  childPos.col,
+                  "table-uniform-typography",
+                  `Mismatched table text size '${dec.core}' inside '<TableCell>'. In tables, all fonts must have standard 14px size ('text-sm').`,
+                  lineSnippet
+                );
+              }
+            });
+          });
+        }
+      }
+    }
+    ts2.forEachChild(child, inspectCellDescendant);
+  }
+  if (node.children) {
+    node.children.forEach(inspectCellDescendant);
+  }
+  if (config.rules?.["table-no-cell-stacking"] !== "off") {
+    if (hasVerticalStack || directBlockCount > 1) {
+      if (!childrenText.includes("dse-ignore-stack")) {
+        addViolation(
+          filePath,
+          pos.line,
+          pos.col,
+          "table-no-cell-stacking",
+          "Stacked text or metadata items detected inside '<TableCell>'. In our design system, vertical stacking of metadata inside table rows is prohibited. Every piece of metadata must reside in its own dedicated column.",
+          lineSnippet
+        );
+      }
+    }
+  }
+  if (config.rules?.["table-no-horizontal-stacking"] !== "off") {
+    if (/(?:flex\s+items-center|inline-flex|flex-row|items-center\s+gap)/.test(childrenText) && /<(?:Chip|Badge)\b/.test(childrenText) && /<(?:span|div|p)\b[^>]*>(?:(?!<\/(?:span|div|p)>)[\s\S])*?(?:email|\.email|\{cEmail\}|\{item\.email\}|@)[^<]*?<\/(?:span|div|p)>/i.test(childrenText) && !childrenText.includes("dse-ignore-stack")) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "table-no-horizontal-stacking",
+        "Horizontal stacking of primary text and metadata status chip detected inside '<TableCell>'. Distinct metadata must reside in dedicated columns.",
+        lineSnippet
+      );
+    }
+  }
+}
+function checkTableFileInvariants(filePath, content, addViolation, fileImports, hasTable, hasTableHeader, hasTableHead, hasTableBody, hasTableRow, hasTableCell, usesColumnHeader, usesResizeDivider, usesResizableHook, config) {
+  if (config.rules?.["table-resizable-required"] !== "off") {
+    const usesTablePrimitivesWithoutTable = (usesColumnHeader || usesResizeDivider || usesResizableHook) && !hasTable;
+    if (usesTablePrimitivesWithoutTable) {
+      addViolation(
+        filePath,
+        1,
+        1,
+        "table-resizable-required",
+        "Ad-hoc div table detected. Constructing custom data grids without using the official '<Table>' suite is prohibited. Use <Table>, <TableHeader>, <TableHead>, <TableBody>, <TableRow>, and <TableCell>.",
+        ""
+      );
+    }
+  }
+  if (hasTable && config.rules?.["table-single-border"] !== "off") {
+    if (/<div\b[^>]*\b(?:border\b|border-stroke|border-neutral)\b[^>]*>\s*<Table\b/.test(content)) {
+      addViolation(
+        filePath,
+        1,
+        1,
+        "table-single-border",
+        "Redundant outer border wrapper detected immediately surrounding '<Table>'. The '<Table>' component natively provides the official standard container. Remove redundant outer border wrapper.",
+        ""
+      );
+    }
+  }
+  if (hasTable && config.rules?.["table-windowed-pagination"] !== "off") {
+    const normFilePath = filePath.replace(/\\/g, "/");
+    const isExcludedFromPagination = normFilePath.includes("components/ui/table.tsx") || normFilePath.includes("components/settings/") || normFilePath.includes("app/(dashboard)/settings") || normFilePath.includes("lead-import-modal.tsx") || content.includes("dse-ignore-pagination");
+    if (!isExcludedFromPagination) {
+      const hasPagination = /paginate|safe[A-Z0-9_]*Page|currentPage|leadPage|sessionPage|campPage|total[A-Z0-9_]*Pages|pageSize|Dropdown[^>]*options=.*(?:10|25|50|100)/i.test(content) || /Showing\s+[\s\S]*?\bto\b[\s\S]*?\bof\b/i.test(content);
+      if (!hasPagination) {
+        addViolation(
+          filePath,
+          1,
+          1,
+          "table-windowed-pagination",
+          "Data table in '<Table>' is missing windowed pagination controls. Tables rendering collections must support pagination with page size selector, Previous/Next buttons, and range indicator.",
+          ""
+        );
+      }
+    }
+  }
+}
+function checkTabsElement(attributes, pos, filePath, addViolation, lineSnippet, fileImports) {
+  const normPath = filePath.replace(/\\/g, "/");
+  if (normPath.endsWith("components/ui/tabs.tsx")) return;
+  if (!attributes.items) {
+    addViolation(
+      filePath,
+      pos.line,
+      pos.col,
+      "tabs-component-required",
+      "<Tabs> is missing mandatory 'items' prop. All Tabs components must provide an array of items [{ id, label, icon?, badge?, count?, disabled? }].",
+      lineSnippet
+    );
+  }
+}
+function checkPseudoChips(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile) {
+  const normPath = filePath.replace(/\\/g, "/");
+  if (normPath.endsWith("components/ui/chip.tsx") || normPath.endsWith("components/ui/badge.tsx")) return;
+  if (!attributes.className) return;
+  const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+  classStrings.forEach(({ text }) => {
+    const tokens = text.split(/\s+/);
+    const hasStaticBg = tokens.some((t) => /^(?:dark:)?bg-(?:neutral|emerald|amber|red|blue)-\d+/.test(t));
+    const hasRadius = tokens.some((t) => /^(?:rounded-md|rounded-full)$/.test(t));
+    const hasPadding = tokens.some((t) => /^(?:px-(?:1|1\.5|2|2\.5|3)|p-(?:0\.5|1))$/.test(t));
+    if (hasStaticBg && hasRadius && hasPadding && !lineSnippet.includes("dse-ignore-chip")) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-pseudo-chips",
+        `Pseudo-chip detected on '<${tagName}>'. Never use raw <span> or <div> elements styled with background fills and rounded corners to emulate chips. Use the standard '<Chip>' component.`,
+        lineSnippet
+      );
+    }
+  });
+}
+function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config) {
+  if (!attributes.className) return;
+  const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
+  const isCheckbox = tagName === "Checkbox" || attributes.type?.initializer?.getText(sourceFile)?.includes("checkbox") || attributes.role?.initializer?.getText(sourceFile)?.includes("checkbox") || Boolean(attributes["aria-checked"]) || attributes.className && /\b(?:size-5|w-5\s+h-5)\b/.test(attributes.className.rawText);
+  const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
+  const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+  classStrings.forEach(({ text, node: stringNode }) => {
+    const tokens = splitClassString(text);
+    tokens.forEach((rawToken) => {
+      const dec = decomposeToken(rawToken);
+      if (!dec) return;
+      const nodePos = stringNode ? getNodePosition(sourceFile, stringNode) : pos;
+      const typoViolations = evaluateTypographyToken(dec.core, config.tokens?.typography);
+      typoViolations.forEach((v) => {
+        if (config.rules?.[v.rule] !== "off") {
+          addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
+        }
+      });
+      const geoViolations = evaluateGeometryToken(dec.core, config.tokens?.geometry, isCheckbox);
+      geoViolations.forEach((v) => {
+        if (config.rules?.[v.rule] !== "off") {
+          addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
+        }
+      });
+      const colorViolations = evaluateColorToken(dec.core, config.tokens?.colors);
+      colorViolations.forEach((v) => {
+        if (config.rules?.[v.rule] !== "off") {
+          addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
+        }
+      });
+      if (isButton && config.rules?.["control-height-max"] !== "off") {
+        if (/\bh-(?:10|11|12|14|16|\[(?:3[8-9]|[4-9][0-9]|[1-9][0-9]{2,})px\])\b/.test(dec.core)) {
+          addViolation(
+            filePath,
+            nodePos.line,
+            nodePos.col,
+            "control-height-max",
+            `Disallowed button height '${dec.core}'. Interactive buttons and controls must standardise on max 36px height ('h-[36px]' or 'h-9').`,
+            lineSnippet
+          );
+        }
+      }
+    });
+  });
+}
+
+// src/rules/regex-rules.ts
+function runRegexRules(content, filePath, addViolation, config) {
+  const lines = content.split("\n");
+  const unicodeArrowRegex = /[\u2190-\u2199\u21D0-\u21D9\u2794-\u27BF\u21B0-\u21B5\u27F5-\u27FF]|(?:->|<-)/gu;
+  const hexColorRegex = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
+  const backdropBlurRegex = /\bbackdrop-blur(?:-[a-z0-9]+)?\b/g;
+  let inButtonTag = false;
+  const disallowedButtonColorRegex = /(?:bg-(?:emerald|green|red|amber|rose|pink|purple|indigo)-[0-9]{2,3}|border-(?:emerald|green|red|amber|rose|pink|purple|indigo)-[0-9]{2,3})\b|variant=["'](?:danger|success|warning|error)["']/g;
+  const buttonOpenRegex = /<(?:Button|IconButton|FloatingActionButton|ButtonyIcon)\b/g;
+  const buttonCloseRegex = /<\/(?:Button|IconButton|FloatingActionButton|ButtonyIcon)>/g;
+  const buttonSelfCloseRegex = /<(?:Button|IconButton|FloatingActionButton|ButtonyIcon)\b[^>]*\/>/g;
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    const trimmed = line.trim();
+    if (line.includes("dse-ignore") || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*") || trimmed.startsWith("<!--")) {
+      return;
+    }
+    const codeOnlyLine = line.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
+    if (config.rules?.["no-text-arrows"] !== "off") {
+      unicodeArrowRegex.lastIndex = 0;
+      let match;
+      while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
+        addViolation(
+          filePath,
+          lineNum,
+          match.index + 1,
+          "no-text-arrows",
+          `Raw text/ASCII arrow '${match[0]}' detected. Disallowed in UI; use design system icon components instead.`,
+          line
+        );
+      }
+    }
+    if (config.rules?.["no-backdrop-blur"] !== "off") {
+      if (!codeOnlyLine.includes("no-backdrop-blur")) {
+        backdropBlurRegex.lastIndex = 0;
+        let match;
+        while ((match = backdropBlurRegex.exec(codeOnlyLine)) !== null) {
+          addViolation(
+            filePath,
+            lineNum,
+            match.index + 1,
+            "no-backdrop-blur",
+            `Disallowed backdrop blur '${match[0]}' detected. Backdrop blur is prohibited across the design system.`,
+            line
+          );
+        }
+      }
+    }
+    if (config.rules?.["no-raw-hex-colors"] !== "off") {
+      hexColorRegex.lastIndex = 0;
+      let match;
+      while ((match = hexColorRegex.exec(codeOnlyLine)) !== null) {
+        const hex = match[0];
+        if (!codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
+          addViolation(
+            filePath,
+            lineNum,
+            match.index + 1,
+            "no-raw-hex-colors",
+            `Raw hex color '${hex}' detected. Use theme tokens or CSS variables instead of hardcoded hex values.`,
+            line
+          );
+        }
+      }
+    }
+    if (config.rules?.["no-chip-colored-buttons"] !== "off") {
+      buttonOpenRegex.lastIndex = 0;
+      if (buttonOpenRegex.test(line)) {
+        inButtonTag = true;
+      }
+      if (inButtonTag) {
+        disallowedButtonColorRegex.lastIndex = 0;
+        let match;
+        while ((match = disallowedButtonColorRegex.exec(line)) !== null) {
+          if (!line.includes("dse-ignore-button-color")) {
+            addViolation(
+              filePath,
+              lineNum,
+              match.index + 1,
+              "no-chip-colored-buttons",
+              `Disallowed chip color '${match[0]}' applied to Button. Buttons must never use semantic chip colors.`,
+              line
+            );
+          }
+        }
+        buttonCloseRegex.lastIndex = 0;
+        buttonSelfCloseRegex.lastIndex = 0;
+        if (buttonCloseRegex.test(line) || buttonSelfCloseRegex.test(line) || line.includes(">")) {
+          inButtonTag = false;
+        }
+      }
+    }
+  });
+}
+
+// src/rules/python-rules.ts
+function isInsidePythonString(line, index) {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < index; i++) {
+    const char = line[i];
+    if (char === "\\") {
+      i++;
+      continue;
+    }
+    if (char === "'" && !inDouble) inSingle = !inSingle;
+    if (char === '"' && !inSingle) inDouble = !inDouble;
+  }
+  return inSingle || inDouble;
+}
+function runPythonRules(content, filePath, addViolation, config) {
+  const lines = content.split("\n");
+  const isPython = filePath.endsWith(".py");
+  const isCssOrHtml = filePath.endsWith(".css") || filePath.endsWith(".html") || filePath.endsWith(".jinja") || filePath.endsWith(".jinja2");
+  const unicodeArrowRegex = /[\u2190-\u2199\u21D0-\u21D9\u2794-\u27BF\u21B0-\u21B5\u27F5-\u27FF]|(?:->|<-)/gu;
+  const hexColorRegex = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
+  let inStyleBlock = false;
+  lines.forEach((line, idx) => {
+    const lineNum = idx + 1;
+    const trimmed = line.trim();
+    if (line.includes("dse-ignore") || trimmed.startsWith("#") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+      return;
+    }
+    const codeOnlyLine = isPython ? line.replace(/#.*$/, "") : line.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
+    if (line.includes("<style>")) inStyleBlock = true;
+    if (line.includes("</style>")) inStyleBlock = false;
+    if (config.rules?.["no-text-arrows"] !== "off") {
+      unicodeArrowRegex.lastIndex = 0;
+      let match;
+      while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
+        const arrow = match[0];
+        if (isPython && arrow === "->" && !isInsidePythonString(line, match.index)) {
+          continue;
+        }
+        addViolation(
+          filePath,
+          lineNum,
+          match.index + 1,
+          "no-text-arrows",
+          `Raw text arrow '${arrow}' detected. Use design system icon components instead of raw arrows.`,
+          line
+        );
+      }
+    }
+    if (inStyleBlock || isCssOrHtml) {
+      const fontSizeMatch = line.match(/font-size\s*:\s*(\d+(?:\.\d+)?)(px|rem)/i);
+      if (fontSizeMatch) {
+        const val = parseFloat(fontSizeMatch[1]);
+        const unit = fontSizeMatch[2].toLowerCase();
+        const px = unit === "rem" ? val * 16 : val;
+        if (px < 14 && config.rules?.["font-size-min"] !== "off") {
+          addViolation(
+            filePath,
+            lineNum,
+            fontSizeMatch.index || 1,
+            "font-size-min",
+            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) is smaller than 14px. Primary body font must strictly be standard 14px.`,
+            line
+          );
+        } else if (px > 32 && config.rules?.["font-size-max"] !== "off") {
+          addViolation(
+            filePath,
+            lineNum,
+            fontSizeMatch.index || 1,
+            "font-size-max",
+            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) exceeds maximum allowed heading cap of 32px.`,
+            line
+          );
+        }
+      }
+      const fontWeightMatch = line.match(/font-weight\s*:\s*([0-9]{3}|bold|bolder|semibold)/i);
+      if (fontWeightMatch && config.rules?.["font-weight-max"] !== "off") {
+        const rawWeight = fontWeightMatch[1].toLowerCase();
+        const weightNum = parseInt(rawWeight, 10);
+        if (weightNum > 500 || ["bold", "bolder", "semibold"].includes(rawWeight)) {
+          addViolation(
+            filePath,
+            lineNum,
+            fontWeightMatch.index || 1,
+            "font-weight-max",
+            `Disallowed font-weight '${fontWeightMatch[0]}'. Font weight must not exceed Medium (500).`,
+            line
+          );
+        }
+      }
+      if (config.rules?.["no-backdrop-blur"] !== "off" && /backdrop-filter\s*:\s*blur/i.test(line)) {
+        addViolation(
+          filePath,
+          lineNum,
+          1,
+          "no-backdrop-blur",
+          "Disallowed backdrop blur filter detected in styles. Backdrop blur is prohibited across the design system.",
+          line
+        );
+      }
+    }
+    if (config.rules?.["no-raw-hex-colors"] !== "off") {
+      hexColorRegex.lastIndex = 0;
+      let match;
+      while ((match = hexColorRegex.exec(line)) !== null) {
+        const hex = match[0];
+        if (inStyleBlock || isCssOrHtml || /(?:color|background|bg|border|fill|stroke|theme)\s*[:=]/i.test(line)) {
+          addViolation(
+            filePath,
+            lineNum,
+            match.index + 1,
+            "no-raw-hex-colors",
+            `Raw hex color '${hex}' detected. Centralize theme colors in configuration or CSS variables instead of hardcoded hex values.`,
+            line
+          );
+        }
+      }
+    }
+  });
+}
+
+// src/rules/runner.ts
+async function runDseScan(config, cwd = process.cwd()) {
+  let targetDir = path2.resolve(cwd, config.targetDir || "src");
+  if (!fs2.existsSync(targetDir)) {
+    targetDir = cwd;
+  }
+  const includePatterns = config.include || ["**/*.{tsx,jsx,ts,js}"];
+  const excludePatterns = config.exclude || [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/public/**",
+    "**/.git/**"
+  ];
+  const inventoryCounts = {};
+  const inventoryDef = config.components?.requiredInventory || [];
+  inventoryDef.forEach((comp) => {
+    inventoryCounts[comp.name] = 0;
+  });
+  const rawFiles = await fg(includePatterns, {
+    cwd: targetDir,
+    absolute: true
+  });
+  const files = rawFiles.filter((filePath) => {
+    const normalized = filePath.replace(/\\/g, "/");
+    for (const pattern of excludePatterns) {
+      const clean = pattern.replace(/^\*\*?\//, "").replace(/\/\*\*?$/, "").replace(/\\/g, "/");
+      if (clean && normalized.includes(clean)) {
+        return false;
+      }
+    }
+    return true;
+  });
+  const violations = [];
+  const seenViolationKeys = /* @__PURE__ */ new Set();
+  const addViolation = (file, line, col, rule, message, snippet) => {
+    const normFile = path2.relative(cwd, file).replace(/\\/g, "/");
+    const key = `${normFile}:${line}:${rule}`;
+    if (seenViolationKeys.has(key)) return;
+    seenViolationKeys.add(key);
+    const severity = config.rules?.[rule] || "error";
+    if (severity === "off") return;
+    violations.push({
+      file: normFile,
+      line: line || 0,
+      col: col || 0,
+      rule,
+      severity: severity === "warn" ? "warn" : "error",
+      message,
+      snippet: snippet ? snippet.trim() : void 0
+    });
+  };
+  let scannedJsxFiles = false;
+  for (const filePath of files) {
+    const content = fs2.readFileSync(filePath, "utf-8");
+    const isJsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx") || filePath.endsWith(".ts") || filePath.endsWith(".js");
+    const isPythonOrTemplate = filePath.endsWith(".py") || filePath.endsWith(".html") || filePath.endsWith(".jinja") || filePath.endsWith(".jinja2") || filePath.endsWith(".css");
+    if (isJsx) {
+      scannedJsxFiles = true;
+      inventoryDef.forEach((comp) => {
+        const names = [comp.componentName || comp.name, ...comp.altNames || []];
+        const pattern = new RegExp(`<(?:${names.join("|")})\\b`, "g");
+        if (pattern.test(content)) {
+          inventoryCounts[comp.name] = (inventoryCounts[comp.name] || 0) + 1;
+        }
+      });
+      const sourceFile = parseTsx(filePath, content);
+      const fileImports = getFileImports(sourceFile);
+      runAstRules(sourceFile, filePath, addViolation, fileImports, config);
+      runRegexRules(content, filePath, addViolation, config);
+    } else if (isPythonOrTemplate) {
+      runPythonRules(content, filePath, addViolation, config);
+    } else {
+      runRegexRules(content, filePath, addViolation, config);
+    }
+  }
+  if (scannedJsxFiles && inventoryDef.length > 0 && config.rules?.["component-inventory-active"] !== "off") {
+    inventoryDef.forEach((comp) => {
+      const count = inventoryCounts[comp.name] || 0;
+      if (count === 0) {
+        violations.push({
+          file: "GLOBAL",
+          line: 0,
+          col: 0,
+          rule: "component-inventory-active",
+          severity: "error",
+          message: `Required design system component '<${comp.name}>' is defined in the design system but never utilized anywhere across the application!`
+        });
+      }
+    });
+  }
+  const errorCount = violations.filter((v) => v.severity === "error").length;
+  const warningCount = violations.filter((v) => v.severity === "warn").length;
+  const componentInventoryReport = {};
+  if (scannedJsxFiles && inventoryDef.length > 0) {
+    inventoryDef.forEach((comp) => {
+      const count = inventoryCounts[comp.name] || 0;
+      componentInventoryReport[comp.name] = {
+        active: count > 0,
+        fileCount: count
+      };
+    });
+  }
+  return {
+    violations,
+    scannedFilesCount: files.length,
+    errorCount,
+    warningCount,
+    componentInventory: componentInventoryReport
+  };
+}
+
+// src/formatters/stylish.ts
+import pc from "picocolors";
+function formatStylish(result) {
+  const output = [];
+  output.push("");
+  output.push(pc.bold(pc.cyan("========================================================")));
+  output.push(pc.bold(pc.cyan("       DESIGN SYSTEM ENFORCER (DSE) - SCAN REPORT       ")));
+  output.push(pc.bold(pc.cyan("========================================================")));
+  output.push(`Scanned ${pc.bold(result.scannedFilesCount)} files.`);
+  output.push("");
+  if (Object.keys(result.componentInventory).length > 0) {
+    output.push(pc.bold(pc.dim("--- Design System Components Inventory ---")));
+    for (const [name, info] of Object.entries(result.componentInventory)) {
+      const paddedName = `<${name}`.padEnd(22) + ">";
+      if (info.active) {
+        output.push(`  \u2022 ${pc.white(paddedName)} : ${pc.green("\u2714 active")} (${info.fileCount} files)`);
+      } else {
+        output.push(`  \u2022 ${pc.white(paddedName)} : ${pc.red("\u2716 UNUSED / DEAD COMPONENT")}`);
+      }
+    }
+    output.push("");
+  }
+  if (result.violations.length > 0) {
+    output.push(pc.bold(pc.red(`Found ${result.errorCount} error(s) and ${result.warningCount} warning(s):`)));
+    output.push("");
+    const grouped = {};
+    for (const v of result.violations) {
+      if (!grouped[v.file]) grouped[v.file] = [];
+      grouped[v.file].push(v);
+    }
+    for (const [file, items] of Object.entries(grouped)) {
+      output.push(pc.underline(pc.bold(file)));
+      for (const item of items) {
+        const badge = item.severity === "error" ? pc.red("error") : pc.yellow("warning");
+        output.push(
+          `  ${pc.dim(`${item.line}:${item.col}`)}  ${badge}  ${item.message}  ${pc.dim(`(${item.rule})`)}`
+        );
+        if (item.snippet) {
+          output.push(`    ${pc.dim(">")} ${pc.italic(item.snippet)}`);
+        }
+      }
+      output.push("");
+    }
+    output.push(
+      pc.bold(
+        pc.red(
+          `\u2716 Failed with ${result.errorCount} error(s). Please resolve all Design System Enforcer violations before committing or deploying.`
+        )
+      )
+    );
+  } else {
+    output.push(pc.bold(pc.green("\u2714 PERFECT! All files strictly comply with the Design System Enforcer rules.")));
+  }
+  output.push("");
+  return output.join("\n");
+}
+
+// src/formatters/json.ts
+function formatJson(result) {
+  return JSON.stringify(result, null, 2);
+}
+
+// src/scaffold/index.ts
+import fs3 from "fs";
+import path3 from "path";
+
+// src/scaffold/templates/tokens.ts
+var tokensTemplate = `/**
+ * Design System Tokens
+ * All colors are driven by CSS variables in HSL format for instant theme customization.
+ * AI Agents or developers can update these values in globals.css.
+ */
+
+export const typographyTokens = {
+  fontFamily: {
+    sans: ["var(--font-sans)", "system-ui", "-apple-system", "sans-serif"],
+    mono: ["var(--font-mono)", "monospace"],
+  },
+  fontSize: {
+    xs: "12px",
+    sm: "14px", // Primary body font standard
+    base: "16px", // Large body font
+    lg: "18px",
+    xl: "20px",
+    "2xl": "24px",
+    "3xl": "30px", // Maximum heading cap
+  },
+  fontWeight: {
+    regular: "400",
+    medium: "500", // Standard for buttons and interactive controls
+    semibold: "600",
+  },
+  lineHeight: {
+    tight: "1.25",
+    snug: "1.375",
+    normal: "1.5",
+    relaxed: "1.625",
+  },
+} as const;
+
+export const geometryTokens = {
+  radius: {
+    none: "0px",
+    checkbox: "4px", // Strictly 4px for checkboxes only
+    sm: "8px",
+    md: "8px", // Standard for buttons, inputs, dropdowns, tabs
+    lg: "12px", // Standard for cards and modal containers
+    xl: "16px",
+    full: "9999px",
+  },
+  controlHeight: {
+    sm: "30px",
+    md: "36px", // Standard control height (buttons, inputs, tabs)
+    lg: "40px",
+  },
+  checkboxSize: "20px", // Standard size-5
+} as const;
+`;
+
+// src/scaffold/templates/css.ts
+var cssTemplate = `@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* -------------------------------------------------------------------------
+     * Design System Color Tokens (HSL)
+     * Tip for AI Agents: Modify HSL values here to rebrand or customize themes!
+     * ------------------------------------------------------------------------- */
+    --background: 0 0% 100%;             /* White (#ffffff) */
+    --foreground: 0 0% 11%;              /* Text Primary (#1c1c1c) */
+
+    --muted: 0 0% 96%;                   /* Neutral 100 (#f5f5f5) */
+    --muted-foreground: 0 0% 45%;        /* Text Secondary (#737373) */
+
+    --border: 0 0% 90%;                  /* Stroke Default (#e5e5e5) */
+    --input: 0 0% 90%;                   /* Input Stroke */
+
+    --primary: 0 0% 9%;                  /* Brand Dark (#171717) */
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
+
+    /* Semantic Status Tokens */
+    --success: 142 71% 45%;              /* Emerald */
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;               /* Amber */
+    --warning-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;            /* Red */
+    --destructive-foreground: 0 0% 100%;
+
+    /* Geometry Tokens */
+    --radius-sm: 8px;
+    --radius-md: 8px;                    /* Standard 8px for controls */
+    --radius-lg: 12px;                   /* Standard 12px for cards */
+    --control-height: 36px;              /* Standard 36px */
+  }
+
+  .dark {
+    --background: 0 0% 9%;
+    --foreground: 0 0% 98%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}
+`;
+
+// src/scaffold/templates/components.ts
+var buttonTemplate = `import React from "react";
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "outline" | "ghost";
+  size?: "default" | "sm" | "icon";
+  children?: React.ReactNode;
+}
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className = "", variant = "primary", size = "default", children, ...props }, ref) => {
+    // Standard 36px height, 8px radius, font-medium, strictly neutral palette
+    const baseClasses =
+      "inline-flex items-center justify-center font-medium text-sm rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none";
+
+    const variantClasses = {
+      primary: "bg-neutral-900 text-white hover:bg-neutral-800 shadow-2xs",
+      secondary: "bg-neutral-100 text-neutral-900 hover:bg-neutral-200",
+      outline: "border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50 shadow-2xs",
+      ghost: "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900",
+    }[variant];
+
+    const sizeClasses = {
+      default: "h-[36px] min-h-[36px] px-3.5 gap-2",
+      sm: "h-[30px] min-h-[30px] px-2.5 text-sm gap-1.5",
+      icon: "size-9 min-h-[36px] min-w-[36px] p-0",
+    }[size];
+
+    return (
+      <button ref={ref} className={\`\${baseClasses} \${variantClasses} \${sizeClasses} \${className}\`} {...props}>
+        {children}
+      </button>
+    );
+  }
+);
+Button.displayName = "Button";
+`;
+var chipTemplate = `import React from "react";
+
+export interface ChipProps extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: "neutral" | "success" | "warning" | "error" | "outline";
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+export const Chip: React.FC<ChipProps> = ({
+  variant = "neutral",
+  icon,
+  children,
+  className = "",
+  ...props
+}) => {
+  // Standard 36px height, 8px radius, 14px typography
+  const baseClasses =
+    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium gap-1.5 select-none";
+
+  const variantClasses = {
+    neutral: "bg-neutral-100 text-neutral-800 border border-neutral-200",
+    success: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+    warning: "bg-amber-50 text-amber-700 border border-amber-200",
+    error: "bg-red-50 text-red-700 border border-red-200",
+    outline: "bg-white text-neutral-700 border border-neutral-200",
+  }[variant];
+
+  return (
+    <div className={\`\${baseClasses} \${variantClasses} \${className}\`} {...props}>
+      {icon && <span className="shrink-0">{icon}</span>}
+      <span>{children}</span>
+    </div>
+  );
+};
+`;
+var inputTemplate = `import React from "react";
+
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  icon?: React.ReactNode;
+}
+
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className = "", icon, type = "text", ...props }, ref) => {
+    return (
+      <div className="relative flex items-center w-full">
+        {icon && <div className="absolute left-3 text-neutral-400 pointer-events-none">{icon}</div>}
+        <input
+          ref={ref}
+          type={type}
+          className={\`w-full h-[36px] min-h-[36px] \${icon ? "pl-9" : "px-3"} pr-3 rounded-md border border-neutral-200 bg-white text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent transition-colors disabled:opacity-50 \${className}\`}
+          {...props}
+        />
+      </div>
+    );
+  }
+);
+Input.displayName = "Input";
+`;
+var dropdownTemplate = `import React, { useState, useRef, useEffect } from "react";
+
+export interface DropdownOption {
+  value: string;
+  label: string;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+}
+
+export interface DropdownProps {
+  options: DropdownOption[];
+  value?: string;
+  onChange?: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}
+
+export const Dropdown: React.FC<DropdownProps> = ({
+  options,
+  value,
+  onChange,
+  placeholder = "Select option...",
+  className = "",
+  disabled = false,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selected = options.find((o) => o.value === value);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className={\`relative inline-block w-full min-w-[140px] \${className}\`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full h-[36px] min-h-[36px] px-3 rounded-md border border-neutral-200 bg-white text-sm text-neutral-900 flex items-center justify-between gap-2 hover:bg-neutral-50 transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-50"
+      >
+        <span className="truncate">{selected ? selected.label : placeholder}</span>
+        <svg className="w-4 h-4 text-neutral-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-60 overflow-y-auto py-1">
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              disabled={option.disabled}
+              onClick={() => {
+                onChange?.(option.value);
+                setIsOpen(false);
+              }}
+              className={\`w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-neutral-100 transition-colors \${option.value === value ? "bg-neutral-50 font-medium text-neutral-900" : "text-neutral-700"} \${option.disabled ? "opacity-50 cursor-not-allowed" : ""}\`}
+            >
+              {option.icon}
+              <span className="truncate">{option.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+`;
+var tableTemplate = `import React from "react";
+
+export const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
+  ({ className = "", children, ...props }, ref) => (
+    <div className="w-full rounded-md border border-neutral-200 bg-white shadow-2xs overflow-hidden">
+      <div className="overflow-x-auto">
+        <table ref={ref} className={\`w-full text-sm text-left border-collapse \${className}\`} {...props}>
+          {children}
+        </table>
+      </div>
+    </div>
+  )
+);
+Table.displayName = "Table";
+
+export const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  ({ className = "", children, ...props }, ref) => (
+    <thead ref={ref} className={\`bg-neutral-50/80 border-b border-neutral-200 text-neutral-900 font-medium \${className}\`} {...props}>
+      {children}
+    </thead>
+  )
+);
+TableHeader.displayName = "TableHeader";
+
+export const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  ({ className = "", children, ...props }, ref) => (
+    <tbody ref={ref} className={\`divide-none bg-white \${className}\`} {...props}>
+      {children}
+    </tbody>
+  )
+);
+TableBody.displayName = "TableBody";
+
+export const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
+  ({ className = "", children, ...props }, ref) => (
+    <tr ref={ref} className={\`border-b border-neutral-200 transition-colors hover:bg-neutral-50/60 last:border-b-0 \${className}\`} {...props}>
+      {children}
+    </tr>
+  )
+);
+TableRow.displayName = "TableRow";
+
+export interface TableHeadProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
+  icon?: React.ReactNode;
+  resizable?: boolean;
+}
+
+export const TableHead = React.forwardRef<HTMLTableCellElement, TableHeadProps>(
+  ({ className = "", icon, resizable = true, children, ...props }, ref) => (
+    <th
+      ref={ref}
+      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative \${className}\`}
+      {...props}
+    >
+      <div className="flex items-center gap-2">
+        {icon && <span className="text-neutral-500 shrink-0">{icon}</span>}
+        <span>{children}</span>
+      </div>
+    </th>
+  )
+);
+TableHead.displayName = "TableHead";
+
+export const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
+  ({ className = "", children, ...props }, ref) => (
+    <td ref={ref} className={\`px-4 py-2.5 align-middle text-sm text-neutral-900 \${className}\`} {...props}>
+      {children}
+    </td>
+  )
+);
+TableCell.displayName = "TableCell";
+`;
+var tabsTemplate = `import React from "react";
+
+export interface TabItem {
+  id: string;
+  label: string;
+  icon?: React.ReactNode;
+  badge?: React.ReactNode;
+  count?: number;
+  disabled?: boolean;
+}
+
+export interface TabsProps {
+  items: TabItem[];
+  activeId: string;
+  onChange: (id: string) => void;
+  className?: string;
+}
+
+export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange, className = "" }) => {
+  // Standard 36px height, 8px radius, font-medium
+  return (
+    <div className={\`inline-flex h-[36px] min-h-[36px] items-center rounded-md bg-neutral-100 p-1 text-neutral-600 \${className}\`}>
+      {items.map((tab) => {
+        const isActive = tab.id === activeId;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            disabled={tab.disabled}
+            onClick={() => onChange(tab.id)}
+            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-all select-none \${
+              isActive
+                ? "bg-white text-neutral-900 shadow-2xs"
+                : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"
+            } \${tab.disabled ? "opacity-50 cursor-not-allowed" : ""}\`}
+          >
+            {tab.icon && <span className="shrink-0">{tab.icon}</span>}
+            <span>{tab.label}</span>
+            {tab.count !== undefined && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-neutral-200 text-neutral-700">
+                {tab.count}
+              </span>
+            )}
+            {tab.badge}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+`;
+var cardTemplate = `import React from "react";
+
+export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className = "", children, ...props }, ref) => (
+    // Standard 12px corner radius (rounded-lg) for main content cards and containers
+    <div
+      ref={ref}
+      className={\`rounded-lg border border-neutral-200 bg-white p-5 shadow-xs text-neutral-900 \${className}\`}
+      {...props}
+    >
+      {children}
+    </div>
+  )
+);
+Card.displayName = "Card";
+`;
+var checkboxTemplate = `import React from "react";
+
+export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
+  label?: string;
+}
+
+export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
+  ({ className = "", label, id, ...props }, ref) => {
+    return (
+      <label htmlFor={id} className="inline-flex items-center gap-2 cursor-pointer select-none">
+        <input
+          ref={ref}
+          id={id}
+          type="checkbox"
+          // Strictly 20px (size-5) and 4px radius (rounded-xs / rounded-[4px])
+          className={\`size-5 rounded-xs border border-neutral-300 text-neutral-900 focus:ring-2 focus:ring-neutral-400 focus:ring-offset-1 transition-colors cursor-pointer \${className}\`}
+          {...props}
+        />
+        {label && <span className="text-sm font-medium text-neutral-900">{label}</span>}
+      </label>
+    );
+  }
+);
+Checkbox.displayName = "Checkbox";
+`;
+var skeletonTemplate = `import React from "react";
+
+export const Skeleton: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
+  className = "",
+  ...props
+}) => {
+  return (
+    <div
+      className={\`animate-pulse rounded-md bg-neutral-200/70 \${className}\`}
+      {...props}
+    />
+  );
+};
+`;
+
+// src/scaffold/index.ts
+var COMPONENT_TEMPLATES = {
+  button: { filename: "button.tsx", content: buttonTemplate },
+  chip: { filename: "chip.tsx", content: chipTemplate },
+  badge: { filename: "badge.tsx", content: chipTemplate },
+  input: { filename: "input.tsx", content: inputTemplate },
+  dropdown: { filename: "dropdown.tsx", content: dropdownTemplate },
+  table: { filename: "table.tsx", content: tableTemplate },
+  tabs: { filename: "tabs.tsx", content: tabsTemplate },
+  card: { filename: "card.tsx", content: cardTemplate },
+  checkbox: { filename: "checkbox.tsx", content: checkboxTemplate },
+  skeleton: { filename: "skeleton.tsx", content: skeletonTemplate }
+};
+function scaffoldConfig(cwd = process.cwd(), preset = "berserk") {
+  if (preset === "python") {
+    const jsonPath = path3.resolve(cwd, "dse.config.json");
+    if (fs3.existsSync(jsonPath)) return jsonPath;
+    const content2 = JSON.stringify(
+      {
+        preset: "python",
+        targetDir: ".",
+        include: ["**/*.{py,html,jinja,jinja2,css}"],
+        exclude: [
+          "**/.venv/**",
+          "**/venv/**",
+          "**/__pycache__/**",
+          "**/.pytest_cache/**",
+          "**/.git/**"
+        ]
+      },
+      null,
+      2
+    ) + "\n";
+    fs3.writeFileSync(jsonPath, content2, "utf-8");
+    return jsonPath;
+  }
+  const configPath = path3.resolve(cwd, "dse.config.js");
+  if (fs3.existsSync(configPath)) {
+    return configPath;
+  }
+  const content = `import { defineConfig } from "design-system-enforcer";
+
+export default defineConfig({
+  preset: "${preset}",
+  targetDir: "src",
+  include: ["**/*.{tsx,jsx,ts,js}"],
+  exclude: [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/public/**",
+    "**/.git/**",
+    "src/lib/tokens.ts",
+    "src/app/globals.css",
+    "src/components/ui/button.tsx",
+    "src/components/ui/chip.tsx",
+    "src/components/ui/card.tsx",
+    "src/components/ui/input.tsx",
+    "src/components/ui/table.tsx",
+    "src/components/ui/tabs.tsx",
+    "src/components/ui/dropdown.tsx",
+    "src/components/ui/checkbox.tsx",
+    "src/components/ui/skeleton.tsx",
+  ],
+});
+`;
+  fs3.writeFileSync(configPath, content, "utf-8");
+  return configPath;
+}
+function scaffoldTokens(cwd = process.cwd()) {
+  const libDir = path3.resolve(cwd, "src/lib");
+  const appDir = path3.resolve(cwd, "src/app");
+  if (!fs3.existsSync(libDir)) fs3.mkdirSync(libDir, { recursive: true });
+  if (!fs3.existsSync(appDir)) fs3.mkdirSync(appDir, { recursive: true });
+  const tokensPath = path3.join(libDir, "tokens.ts");
+  if (!fs3.existsSync(tokensPath)) {
+    fs3.writeFileSync(tokensPath, tokensTemplate, "utf-8");
+  }
+  const cssPath = path3.join(appDir, "globals.css");
+  if (!fs3.existsSync(cssPath)) {
+    fs3.writeFileSync(cssPath, cssTemplate, "utf-8");
+  }
+  return { tokensPath, cssPath };
+}
+function scaffoldComponent(componentName, cwd = process.cwd()) {
+  const key = componentName.toLowerCase();
+  const template = COMPONENT_TEMPLATES[key];
+  if (!template) {
+    return null;
+  }
+  const uiDir = path3.resolve(cwd, "src/components/ui");
+  if (!fs3.existsSync(uiDir)) {
+    fs3.mkdirSync(uiDir, { recursive: true });
+  }
+  const targetPath = path3.join(uiDir, template.filename);
+  if (!fs3.existsSync(targetPath)) {
+    fs3.writeFileSync(targetPath, template.content, "utf-8");
+  }
+  return targetPath;
+}
+function scaffoldAllPrimitives(cwd = process.cwd()) {
+  const created = [];
+  const { tokensPath, cssPath } = scaffoldTokens(cwd);
+  created.push(tokensPath, cssPath);
+  for (const name of Object.keys(COMPONENT_TEMPLATES)) {
+    const filePath = scaffoldComponent(name, cwd);
+    if (filePath && !created.includes(filePath)) {
+      created.push(filePath);
+    }
+  }
+  return created;
+}
+
+// src/export-rules/index.ts
+function generateMarkdownRules(config) {
+  const minFont = config.tokens?.typography?.minFontSize || "14px";
+  const maxFont = config.tokens?.typography?.maxFontSize || "32px";
+  const maxWeight = config.tokens?.typography?.maxFontWeight ?? 500;
+  const maxControlHeight = config.tokens?.geometry?.maxControlHeight || "36px";
+  return `<!-- BEGIN:design-system-enforcer-rules -->
+# Design System Rules & Constraints (Enforced by DSE)
+
+## Typography & Font Sizing Rules
+- **Primary Body Font**: Always use standard ${minFont} (\`text-sm\`) as the primary body font across all tables, lists, cards, form inputs, dialogs, and buttons.
+- **Large Body Font**: Use 16px (\`text-base\`) for large body text and emphasized copy.
+- **Maximum Heading Size**: Headings must never exceed ${maxFont} (\`text-2xl\`). Headings larger than ${maxFont} (\`text-3xl\`, \`text-4xl\`) are strictly prohibited.
+- **Prohibition on Font Sizes Below ${minFont}**: Font sizes smaller than ${minFont} (e.g. \`text-xs\`, \`12px\`, \`10px\`) are strictly prohibited.
+- **Font Weight Cap**: Standard text and interactive elements must not exceed Medium / ${maxWeight} (\`font-medium\`). \`font-semibold\` or \`font-bold\` are prohibited.
+- **No Uppercase Text**: Disallow \`uppercase\` or \`capitalize\` CSS transforms. Use standard sentence or title case.
+
+## UI Iconography & Symbols
+- **No Raw Text Arrows**: Never use raw unicode or ASCII arrows (\u2192, \u2190, \u2191, \u2193, =>, ->). Use design system icon components instead.
+- **No Emojis in UI**: Do NOT use raw emojis in badges, chips, buttons, labels, or table headers.
+
+## Component Design & Primitives
+- **Button Component**: Always use \`<Button>\` from \`@/components/ui/button\`. Raw \`<button>\` HTML elements are strictly prohibited.
+  - Height is strictly standard ${maxControlHeight} (\`h-[36px] min-h-[36px]\`) with 8px corner radius (\`rounded-md\`).
+  - Font weight is strictly \`font-medium\`.
+  - **No Chip-Colored Buttons**: Buttons must NEVER use semantic chip colors (\`bg-emerald-*\`, \`bg-red-*\`, \`variant="danger"\`, \`variant="success"\`).
+- **Chip Component**: \`<Chip>\` from \`@/components/ui/chip\` is the single source of truth for all tags, statuses, pills, and badges. Height is strictly standard ${maxControlHeight} with 8px radius.
+  - **No Pseudo-Chips**: Never use raw \`<span>\` or \`<div>\` elements styled with fills and rounded corners to imitate chips.
+- **Input Component**: Always use \`<Input>\` from \`@/components/ui/input\`. Raw \`<input type="text">\` is strictly prohibited.
+- **Dropdown Component**: Always use \`<Dropdown>\` from \`@/components/ui/dropdown\` instead of raw \`<select>\`.
+- **Checkbox Component**: Strictly 20px dimension (\`size-5\`) and 4px corner radius (\`rounded-xs\`). 4px radius is strictly reserved for checkboxes only.
+- **Cards & Containers**: Main content cards must strictly use 12px corner radius (\`rounded-lg\`).
+
+## Table Component Rules
+- **Mandatory Table Suite**: Always use \`<Table>\`, \`<TableHeader>\`, \`<TableHead>\`, \`<TableBody>\`, \`<TableRow>\`, and \`<TableCell>\` from \`@/components/ui/table\`. Raw HTML table elements (\`<table>\`, \`<tr>\`, \`<td>\`) are strictly prohibited.
+- **Mandatory TableHead Icons**: Every column header (\`<TableHead>\`) must provide an icon component via the \`icon\` prop (\`icon={<MailIcon size={20} />}\`). Only dedicated row selection checkbox columns are exempt.
+- **Mandatory Resizable Columns**: All data columns must support column resizing. Explicitly setting \`resizable={false}\` on data columns is strictly prohibited.
+- **Single Borders**: Never wrap \`<Table>\` in redundant outer bordered containers. Never apply \`divide-y\` to \`<TableBody>\`.
+- **Uniform Table Typography**: All fonts across all cells and headers must share standard 14px size and uniform color (\`text-text-primary\`).
+- **No Vertical Stacking**: Never vertically stack subtext or metadata inside \`<TableCell>\`. Every piece of metadata must reside in its own dedicated, resizable column.
+- **Windowed Pagination**: Data tables rendering dynamic collections must implement pagination (Previous/Next buttons, page size selector [25, 50, 100], and 'Showing X to Y of Z' range indicator).
+
+## Modals & Overlays
+- **No Backdrop Blur**: \`backdrop-blur-*\` is strictly prohibited. Modal backdrops must use standard neutral grey overlay (\`bg-neutral-100/80\`) without blur.
+<!-- END:design-system-enforcer-rules -->
+`;
+}
+
+// src/cli.ts
+var program = new Command();
+program.name("dse").description("Design System Enforcer (DSE) - AST-based Linter and Scaffold Engine").version("1.0.0");
+program.command("check [targetDir]", { isDefault: true }).description("Scan codebase and enforce Design System rules").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").option("-f, --format <format>", "Output format: 'stylish' | 'json'", "stylish").option("--strict", "Treat warnings as errors", false).action(async (targetDirArg, options) => {
+  try {
+    const cwd = targetDirArg ? path4.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const config = await loadConfig(cwd, options.config);
+    const result = await runDseScan(config, cwd);
+    if (options.format === "json") {
+      console.log(formatJson(result));
+    } else {
+      console.log(formatStylish(result));
+    }
+    const totalErrors = options.strict ? result.errorCount + result.warningCount : result.errorCount;
+    if (totalErrors > 0) {
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error(pc2.red("Error running DSE scan:"), err);
+    process.exit(1);
+  }
+});
+program.command("init").description("Initialize DSE configuration and optionally scaffold base primitives").option("--preset <name>", "Preset to use: 'berserk' | 'recommended' | 'python'").option("--with-primitives", "Scaffold full base primitives and tokens suite", false).action((options) => {
+  const cwd = process.cwd();
+  console.log(pc2.bold(pc2.cyan("\nInitializing Design System Enforcer (DSE)...")));
+  const isPythonProject = fs4.existsSync(path4.resolve(cwd, "requirements.txt")) || fs4.existsSync(path4.resolve(cwd, "pyproject.toml")) || fs4.existsSync(path4.resolve(cwd, ".streamlit"));
+  const preset = options.preset || (isPythonProject ? "python" : "berserk");
+  const configPath = scaffoldConfig(cwd, preset);
+  console.log(pc2.green("\u2714 Created config:"), pc2.bold(path4.relative(cwd, configPath)), pc2.dim(`(preset: ${preset})`));
+  const pkgPath = path4.resolve(cwd, "package.json");
+  if (fs4.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs4.readFileSync(pkgPath, "utf-8"));
+      pkg.scripts = pkg.scripts || {};
+      if (!pkg.scripts.dse) {
+        pkg.scripts.dse = "dse";
+        fs4.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+        console.log(pc2.green("\u2714 Added script 'dse' to package.json"));
+      }
+    } catch (err) {
+      console.warn(pc2.yellow("\u26A0 Could not update package.json:"), err);
+    }
+  }
+  if (options.withPrimitives) {
+    console.log(pc2.cyan("Scaffolding primitives and theme tokens..."));
+    const created = scaffoldAllPrimitives(cwd);
+    created.forEach((file) => {
+      console.log(pc2.green("\u2714 Created:"), pc2.dim(path4.relative(cwd, file)));
+    });
+  } else {
+    console.log(
+      pc2.dim("\nTip: Run 'npx dse scaffold' to generate rule-compliant base primitives and tokens anytime.")
+    );
+  }
+  console.log(pc2.bold(pc2.green("\n\u2714 DSE setup complete! Run 'npm run dse' to verify your project.\n")));
+});
+program.command("add <components...>").description("Scaffold specific rule-compliant design system primitives (button, chip, input, table, tabs, card, checkbox, dropdown, skeleton)").action((components) => {
+  const cwd = process.cwd();
+  console.log(pc2.bold(pc2.cyan("\nScaffolding requested components...")));
+  for (const comp of components) {
+    const filePath = scaffoldComponent(comp, cwd);
+    if (filePath) {
+      console.log(pc2.green("\u2714 Created:"), pc2.bold(path4.relative(cwd, filePath)));
+    } else {
+      console.log(
+        pc2.yellow(`\u26A0 Unknown component '${comp}'. Available: ${Object.keys(COMPONENT_TEMPLATES).join(", ")}`)
+      );
+    }
+  }
+  console.log("");
+});
+program.command("scaffold").description("Scaffold all base primitives and HSL tokens into src/components/ui/ and src/lib/").action(() => {
+  const cwd = process.cwd();
+  console.log(pc2.bold(pc2.cyan("\nScaffolding full design system suite...")));
+  const created = scaffoldAllPrimitives(cwd);
+  created.forEach((file) => {
+    console.log(pc2.green("\u2714 Created:"), pc2.bold(path4.relative(cwd, file)));
+  });
+  console.log(pc2.bold(pc2.green("\n\u2714 All design system primitives scaffolded successfully!\n")));
+});
+program.command("export-rules").description("Export rules in Markdown format for AI coding assistants (AGENTS.md, .cursorrules, CLAUDE.md)").option("-w, --write <file>", "Write directly to target file (e.g. AGENTS.md)").action(async (options) => {
+  const cwd = process.cwd();
+  const config = await loadConfig(cwd);
+  const rulesMd = generateMarkdownRules(config);
+  if (options.write) {
+    const targetFile = path4.resolve(cwd, options.write);
+    if (fs4.existsSync(targetFile)) {
+      let existing = fs4.readFileSync(targetFile, "utf-8");
+      const startTag = "<!-- BEGIN:design-system-enforcer-rules -->";
+      const endTag = "<!-- END:design-system-enforcer-rules -->";
+      if (existing.includes(startTag) && existing.includes(endTag)) {
+        const regex = new RegExp(`${startTag}[\\s\\S]*?${endTag}`, "g");
+        existing = existing.replace(regex, rulesMd.trim());
+      } else {
+        existing = `${existing.trim()}
+
+${rulesMd.trim()}
+`;
+      }
+      fs4.writeFileSync(targetFile, existing, "utf-8");
+      console.log(pc2.green(`\u2714 Updated rules in ${options.write}`));
+    } else {
+      fs4.writeFileSync(targetFile, rulesMd, "utf-8");
+      console.log(pc2.green(`\u2714 Created ${options.write} with design system rules`));
+    }
+  } else {
+    console.log(rulesMd);
+  }
+});
+program.parse(process.argv);
+//# sourceMappingURL=cli.js.map
