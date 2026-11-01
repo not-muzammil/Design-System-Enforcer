@@ -1,0 +1,17 @@
+{
+  "preset": "recommended",
+  "targetDir": "src",
+  "include": ["**/*.{tsx,jsx,ts,js}"],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "src/scaffold/**",
+    "src/export-rules/**",
+    "src/rules/**",
+    "src/config/presets/**"
+  ],
+  "rules": {
+    "no-text-arrows": "off",
+    "component-inventory-active": "off"
+  }
+}

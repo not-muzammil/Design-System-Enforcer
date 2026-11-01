@@ -98,7 +98,7 @@ export async function runDseScan(config: DseConfig, cwd = process.cwd()): Promis
   }
 
   // Component inventory verification (only if JSX/TSX components are in scope)
-  if (scannedJsxFiles && config.rules?.["component-inventory-active"] !== "off") {
+  if (scannedJsxFiles && inventoryDef.length > 0 && config.rules?.["component-inventory-active"] !== "off") {
     inventoryDef.forEach((comp) => {
       const count = inventoryCounts[comp.name] || 0;
       if (count === 0) {
@@ -118,13 +118,15 @@ export async function runDseScan(config: DseConfig, cwd = process.cwd()): Promis
   const warningCount = violations.filter((v) => v.severity === "warn").length;
 
   const componentInventoryReport: Record<string, { active: boolean; fileCount: number }> = {};
-  inventoryDef.forEach((comp) => {
-    const count = inventoryCounts[comp.name] || 0;
-    componentInventoryReport[comp.name] = {
-      active: count > 0,
-      fileCount: count,
-    };
-  });
+  if (scannedJsxFiles && inventoryDef.length > 0) {
+    inventoryDef.forEach((comp) => {
+      const count = inventoryCounts[comp.name] || 0;
+      componentInventoryReport[comp.name] = {
+        active: count > 0,
+        fileCount: count,
+      };
+    });
+  }
 
   return {
     violations,

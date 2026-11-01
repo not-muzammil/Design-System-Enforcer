@@ -1,6 +1,21 @@
 import type { DseConfig } from "../config/types.js";
 import type { AddViolationFn } from "./types.js";
 
+function isInsidePythonString(line: string, index: number): boolean {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < index; i++) {
+    const char = line[i];
+    if (char === "\\") {
+      i++;
+      continue;
+    }
+    if (char === "'" && !inDouble) inSingle = !inSingle;
+    if (char === '"' && !inSingle) inDouble = !inDouble;
+  }
+  return inSingle || inDouble;
+}
+
 /**
  * Rules engine specifically adapted for Python (.py), HTML (.html, .jinja), and CSS (.css) files.
  */
@@ -29,6 +44,11 @@ export function runPythonRules(
       return;
     }
 
+    // Strip inline comments before checks so #ff0000 in python comments or /* #fff */ is ignored
+    const codeOnlyLine = isPython
+      ? line.replace(/#.*$/, "")
+      : line.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
+
     // Track <style> blocks (e.g. in Streamlit st.markdown("""<style>...""") or HTML)
     if (line.includes("<style>")) inStyleBlock = true;
     if (line.includes("</style>")) inStyleBlock = false;
@@ -37,11 +57,12 @@ export function runPythonRules(
     if (config.rules?.["no-text-arrows"] !== "off") {
       unicodeArrowRegex.lastIndex = 0;
       let match: RegExpExecArray | null;
-      while ((match = unicodeArrowRegex.exec(line)) !== null) {
+      while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
         const arrow = match[0];
 
-        // In Python files, '->' is standard function return type annotation: def foo() -> int:
-        if (isPython && arrow === "->" && /def\s+[a-zA-Z0-9_]+\s*\([^)]*\)\s*->/.test(line)) {
+        // In Python files, '->' outside string literals is ALWAYS a function return type hint:
+        // e.g. def foo() -> int:, ) -> list:, ) -> Groq:, Callable[..., Any] -> None
+        if (isPython && arrow === "->" && !isInsidePythonString(line, match.index)) {
           continue; // Skip Python type annotations
         }
 

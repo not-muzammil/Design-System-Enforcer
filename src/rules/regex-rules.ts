@@ -24,15 +24,27 @@ export function runRegexRules(
     const lineNum = idx + 1;
     const trimmed = line.trim();
 
-    if (line.includes("dse-ignore") || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+    if (
+      line.includes("dse-ignore") ||
+      trimmed.startsWith("//") ||
+      trimmed.startsWith("/*") ||
+      trimmed.startsWith("*") ||
+      trimmed.startsWith("<!--")
+    ) {
       return;
     }
+
+    // Strip inline comments before regex checks so comments like /* White (#ffffff) */ or <!-- ... --> are never flagged
+    const codeOnlyLine = line
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/, "");
 
     // 1. Arrow symbols
     if (config.rules?.["no-text-arrows"] !== "off") {
       unicodeArrowRegex.lastIndex = 0;
       let match: RegExpExecArray | null;
-      while ((match = unicodeArrowRegex.exec(line)) !== null) {
+      while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
         addViolation(
           filePath,
           lineNum,
@@ -46,17 +58,20 @@ export function runRegexRules(
 
     // 2. Backdrop blur
     if (config.rules?.["no-backdrop-blur"] !== "off") {
-      backdropBlurRegex.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = backdropBlurRegex.exec(line)) !== null) {
-        addViolation(
-          filePath,
-          lineNum,
-          match.index + 1,
-          "no-backdrop-blur",
-          `Disallowed backdrop blur '${match[0]}' detected. Backdrop blur is prohibited across the design system.`,
-          line
-        );
+      // Don't flag rule config names like "no-backdrop-blur"
+      if (!codeOnlyLine.includes("no-backdrop-blur")) {
+        backdropBlurRegex.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = backdropBlurRegex.exec(codeOnlyLine)) !== null) {
+          addViolation(
+            filePath,
+            lineNum,
+            match.index + 1,
+            "no-backdrop-blur",
+            `Disallowed backdrop blur '${match[0]}' detected. Backdrop blur is prohibited across the design system.`,
+            line
+          );
+        }
       }
     }
 
@@ -64,10 +79,10 @@ export function runRegexRules(
     if (config.rules?.["no-raw-hex-colors"] !== "off") {
       hexColorRegex.lastIndex = 0;
       let match: RegExpExecArray | null;
-      while ((match = hexColorRegex.exec(line)) !== null) {
+      while ((match = hexColorRegex.exec(codeOnlyLine)) !== null) {
         const hex = match[0];
         // Allow pure black/white if explicitly permitted or in SVG data
-        if (!line.includes("svg") && !line.includes("xmlns")) {
+        if (!codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
           addViolation(
             filePath,
             lineNum,

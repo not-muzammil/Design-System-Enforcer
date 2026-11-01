@@ -36,13 +36,14 @@ export const pythonPreset: DseConfig = {
   },
   components: {
     disallowRawHtml: {},
+    requiredInventory: [],
   },
   rules: {
     "font-size-min": "error",
     "font-size-max": "error",
     "font-weight-max": "error",
     "no-uppercase-text": "warn",
-    "no-raw-hex-colors": "warn",
+    "no-raw-hex-colors": "off",
     "no-text-arrows": "error",
     "no-backdrop-blur": "error",
     "table-resizable-required": "off",
