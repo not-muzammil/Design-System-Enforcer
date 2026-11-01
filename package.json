@@ -1,0 +1,72 @@
+{
+  "name": "design-system-enforcer",
+  "version": "1.0.0",
+  "description": "Zero-compromise Design System Enforcer (DSE) CLI & AST Linter for React/Next.js projects. Enforces typography, geometry, component invariants, colors, and layout rules.",
+  "keywords": [
+    "design-system",
+    "enforcer",
+    "linter",
+    "ast",
+    "react",
+    "nextjs",
+    "tailwind",
+    "typography",
+    "components"
+  ],
+  "author": "Muzammil",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/not-muzammil/Design-System-Enforcer.git"
+  },
+  "homepage": "https://github.com/not-muzammil/Design-System-Enforcer#readme",
+  "bugs": {
+    "url": "https://github.com/not-muzammil/Design-System-Enforcer/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "bin": {
+    "dse": "./bin/dse.js",
+    "design-system-enforcer": "./bin/dse.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "fast-glob": "^3.3.3",
+    "picocolors": "^1.1.1",
+    "typescript": "^5.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsup": "^8.3.6",
+    "vitest": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
