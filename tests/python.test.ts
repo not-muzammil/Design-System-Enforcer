@@ -80,3 +80,4 @@ st.markdown("""
     expect(violations.some((v) => v.rule === "font-weight-max")).toBe(true);
   });
 });
+

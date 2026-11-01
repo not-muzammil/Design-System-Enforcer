@@ -25,6 +25,7 @@ export interface ColorsConfig {
   bannedColorFamilies?: string[];
   disallowRawHex?: boolean;
   disallowButtonChipColors?: boolean;
+  disallowSaturatedGradients?: boolean;
 }
 
 export interface ComponentsConfig {
@@ -53,6 +54,7 @@ export interface RulesConfig {
   "no-chip-colored-buttons"?: RuleSeverity;
   "no-text-arrows"?: RuleSeverity;
   "no-backdrop-blur"?: RuleSeverity;
+  "no-unapproved-gradients"?: RuleSeverity;
   "modal-backdrop-standard"?: RuleSeverity;
   "table-resizable-required"?: RuleSeverity;
   "table-head-icon-required"?: RuleSeverity;

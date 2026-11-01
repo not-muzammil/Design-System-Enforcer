@@ -55,5 +55,27 @@ describe("Token Decompiler & Evaluator", () => {
     expect(violations.length).toBeGreaterThan(0);
     expect(violations[0].rule).toBe("no-banned-colors");
   });
+
+  it("flags AI purple and indigo gradient stops", () => {
+    const fromViolations = evaluateColorToken("from-purple-600", {
+      bannedColorFamilies: ["purple", "indigo", "violet"],
+    });
+    expect(fromViolations.length).toBeGreaterThan(0);
+    expect(fromViolations[0].rule).toBe("no-banned-colors");
+
+    const toViolations = evaluateColorToken("to-indigo-500", {
+      bannedColorFamilies: ["purple", "indigo", "violet"],
+    });
+    expect(toViolations.length).toBeGreaterThan(0);
+    expect(toViolations[0].rule).toBe("no-banned-colors");
+  });
+
+  it("flags cheesy gradient text", () => {
+    const violations = evaluateColorToken("bg-clip-text", {
+      disallowSaturatedGradients: true,
+    });
+    expect(violations.length).toBeGreaterThan(0);
+    expect(violations[0].rule).toBe("no-unapproved-gradients");
+  });
 });
 

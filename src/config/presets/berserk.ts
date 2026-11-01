@@ -65,6 +65,7 @@ export const berserkPreset: DseConfig = {
       ],
       disallowRawHex: true,
       disallowButtonChipColors: true,
+      disallowSaturatedGradients: true,
     },
   },
   components: {
@@ -111,6 +112,7 @@ export const berserkPreset: DseConfig = {
     "no-chip-colored-buttons": "error",
     "no-text-arrows": "error",
     "no-backdrop-blur": "error",
+    "no-unapproved-gradients": "error",
     "modal-backdrop-standard": "error",
     "table-resizable-required": "error",
     "table-head-icon-required": "error",

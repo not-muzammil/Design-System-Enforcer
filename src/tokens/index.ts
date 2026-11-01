@@ -185,15 +185,26 @@ export function evaluateColorToken(core: string, config?: ColorsConfig): TokenVi
   const bannedFamilies = new Set(config?.bannedColorFamilies || []);
 
   if (bannedFamilies.size > 0) {
-    const colorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill)-([a-z]+)-[0-9]{2,3}$/);
+    // Matches bg-purple-500, text-indigo-600, border-violet-400, from-purple-600, to-indigo-600, via-pink-500
+    const colorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-([a-z]+)-[0-9]{2,3}$/);
     if (colorMatch) {
       const family = colorMatch[1];
       if (bannedFamilies.has(family)) {
         violations.push({
           rule: "no-banned-colors",
-          message: `Disallowed off-palette color class '${core}'. Color family '${family}' is not permitted.`,
+          message: `Disallowed off-palette color class '${core}'. Color family '${family}' (purple, indigo, violet, etc.) is not permitted in our design system.`,
         });
       }
+    }
+  }
+
+  // Cheesy AI Gradient Checks
+  if (config?.disallowSaturatedGradients) {
+    if (core === "bg-clip-text" || core === "text-transparent") {
+      violations.push({
+        rule: "no-unapproved-gradients",
+        message: `Gradient text styling '${core}' detected. Cheesy AI gradient text is prohibited. Use standard high-contrast text typography.`,
+      });
     }
   }
 
