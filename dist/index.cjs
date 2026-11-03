@@ -1668,10 +1668,10 @@ async function runDseScan(config, cwd = process.cwd()) {
     absolute: true
   });
   const files = rawFiles.filter((filePath) => {
-    const normalized = filePath.replace(/\\/g, "/");
+    const relFromCwd = import_node_path4.default.relative(cwd, filePath).replace(/\\/g, "/");
     for (const pattern of excludePatterns) {
       const clean = pattern.replace(/^\*\*?\//, "").replace(/\/\*\*?$/, "").replace(/\\/g, "/");
-      if (clean && normalized.includes(clean)) {
+      if (clean && (relFromCwd === clean || relFromCwd.startsWith(clean + "/") || relFromCwd.includes("/" + clean + "/") || relFromCwd.endsWith("/" + clean))) {
         return false;
       }
     }

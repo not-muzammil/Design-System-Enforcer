@@ -57,3 +57,4 @@ export function formatDoctorOutput(report: DoctorReport): string {
   lines.push("");
   return lines.join("\n");
 }
+

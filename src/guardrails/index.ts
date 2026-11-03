@@ -73,3 +73,4 @@ fi
   fs.writeFileSync(hookPath, hookScript, { mode: 0o755 });
   return true;
 }
+
