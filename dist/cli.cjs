@@ -24,10 +24,10 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 
 // src/cli.ts
-var import_node_fs6 = __toESM(require("fs"), 1);
-var import_node_path6 = __toESM(require("path"), 1);
+var import_node_fs8 = __toESM(require("fs"), 1);
+var import_node_path8 = __toESM(require("path"), 1);
 var import_commander = require("commander");
-var import_picocolors2 = __toESM(require("picocolors"), 1);
+var import_picocolors3 = __toESM(require("picocolors"), 1);
 
 // src/config/loader.ts
 var import_node_fs3 = __toESM(require("fs"), 1);
@@ -2443,12 +2443,283 @@ function generateMarkdownRules(config) {
 `;
 }
 
+// src/doctor/index.ts
+function computeDoctorScore(result) {
+  const categoryViolations = {
+    typography: 0,
+    geometry: 0,
+    components: 0,
+    colors: 0,
+    wrapping: 0,
+    tables: 0
+  };
+  const fileCountMap = {};
+  result.violations.forEach((v) => {
+    fileCountMap[v.file] = (fileCountMap[v.file] || 0) + 1;
+    if (v.rule.startsWith("font-") || v.rule.includes("text-size") || v.rule.includes("uppercase")) {
+      categoryViolations.typography++;
+    } else if (v.rule.includes("wrapping")) {
+      categoryViolations.wrapping++;
+    } else if (v.rule.startsWith("control-") || v.rule.startsWith("corner-radius")) {
+      categoryViolations.geometry++;
+    } else if (v.rule.includes("color") || v.rule.includes("gradient") || v.rule.includes("blur")) {
+      categoryViolations.colors++;
+    } else if (v.rule.startsWith("table-")) {
+      categoryViolations.tables++;
+    } else {
+      categoryViolations.components++;
+    }
+  });
+  const filesCount = Math.max(1, result.scannedFilesCount || 1);
+  function calcScore(violations) {
+    const penaltyPerViolation = 100 / (filesCount * 2);
+    return Math.max(0, Math.round(100 - violations * penaltyPerViolation));
+  }
+  const categories = [
+    { name: "Typography Scale", category: "typography", violations: categoryViolations.typography, score: calcScore(categoryViolations.typography) },
+    { name: "Geometry & Radii", category: "geometry", violations: categoryViolations.geometry, score: calcScore(categoryViolations.geometry) },
+    { name: "Wrap Integrity", category: "wrapping", violations: categoryViolations.wrapping, score: calcScore(categoryViolations.wrapping) },
+    { name: "Component Inventory", category: "components", violations: categoryViolations.components, score: calcScore(categoryViolations.components) },
+    { name: "Color Purity", category: "colors", violations: categoryViolations.colors, score: calcScore(categoryViolations.colors) },
+    { name: "Table Invariants", category: "tables", violations: categoryViolations.tables, score: calcScore(categoryViolations.tables) }
+  ];
+  const totalScore = Math.round(categories.reduce((acc, c) => acc + c.score, 0) / categories.length);
+  let grade = "F";
+  if (totalScore >= 98) grade = "A+";
+  else if (totalScore >= 90) grade = "A";
+  else if (totalScore >= 80) grade = "B";
+  else if (totalScore >= 70) grade = "C";
+  else if (totalScore >= 60) grade = "D";
+  const fileBreakdown = Object.entries(fileCountMap).map(([file, violations]) => ({ file, violations })).sort((a, b) => b.violations - a.violations).slice(0, 5);
+  return {
+    overallScore: totalScore,
+    grade,
+    scannedFiles: filesCount,
+    totalViolations: result.violations.length,
+    categories,
+    fileBreakdown
+  };
+}
+
+// src/doctor/formatter.ts
+var import_picocolors2 = __toESM(require("picocolors"), 1);
+function renderProgressBar(percentage, width = 20) {
+  const filledChars = Math.round(percentage / 100 * width);
+  const emptyChars = width - filledChars;
+  let colorFn = import_picocolors2.default.green;
+  if (percentage < 70) colorFn = import_picocolors2.default.red;
+  else if (percentage < 90) colorFn = import_picocolors2.default.yellow;
+  const bar = colorFn("\u2588".repeat(filledChars)) + import_picocolors2.default.dim("\u2591".repeat(emptyChars));
+  return `${bar} ${colorFn(percentage.toString().padStart(3) + "%")}`;
+}
+function formatDoctorOutput(report) {
+  const lines = [];
+  lines.push("");
+  lines.push(import_picocolors2.default.bold(import_picocolors2.default.cyan("========================================================")));
+  lines.push(import_picocolors2.default.bold(import_picocolors2.default.cyan("       DESIGN SYSTEM ENFORCER - HEALTH REPORT           ")));
+  lines.push(import_picocolors2.default.bold(import_picocolors2.default.cyan("========================================================")));
+  lines.push("");
+  let gradeColor = import_picocolors2.default.green;
+  if (report.grade === "B") gradeColor = import_picocolors2.default.cyan;
+  else if (report.grade === "C") gradeColor = import_picocolors2.default.yellow;
+  else if (report.grade === "D" || report.grade === "F") gradeColor = import_picocolors2.default.red;
+  lines.push(
+    `  ${import_picocolors2.default.bold("Overall Score:")}  ${gradeColor(import_picocolors2.default.bold(report.overallScore + "/100"))}  [${gradeColor(import_picocolors2.default.bold(report.grade))}]`
+  );
+  lines.push(`  ${import_picocolors2.default.bold("Scanned Files:")}  ${import_picocolors2.default.white(report.scannedFiles)}`);
+  lines.push(`  ${import_picocolors2.default.bold("Total Issues:")}   ${report.totalViolations === 0 ? import_picocolors2.default.green("0") : import_picocolors2.default.red(report.totalViolations)}`);
+  lines.push("");
+  lines.push(import_picocolors2.default.bold("  Category Compliance:"));
+  report.categories.forEach((cat) => {
+    const paddedName = cat.name.padEnd(22, " ");
+    const issueCount = cat.violations > 0 ? import_picocolors2.default.dim(`(${cat.violations} issues)`) : "";
+    lines.push(`    ${import_picocolors2.default.dim(paddedName)} ${renderProgressBar(cat.score)} ${issueCount}`);
+  });
+  lines.push("");
+  if (report.fileBreakdown.length > 0) {
+    lines.push(import_picocolors2.default.bold(import_picocolors2.default.yellow("  Top Offending Files:")));
+    report.fileBreakdown.forEach((item, idx) => {
+      lines.push(`    ${idx + 1}. ${import_picocolors2.default.cyan(item.file)}: ${import_picocolors2.default.red(item.violations + " violations")}`);
+    });
+    lines.push("");
+    lines.push(import_picocolors2.default.dim("  Run 'dse check' for detailed line-by-line violation reports."));
+    lines.push(import_picocolors2.default.dim("  Run 'dse fix' to automatically remediate common violations."));
+  } else {
+    lines.push(import_picocolors2.default.bold(import_picocolors2.default.green("  \u2714 All design tokens and component invariants are 100% compliant!")));
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// src/fixer/index.ts
+var import_node_fs6 = __toESM(require("fs"), 1);
+var import_node_path6 = __toESM(require("path"), 1);
+async function runDseFix(config, cwd = process.cwd()) {
+  const scanResult = await runDseScan(config, cwd);
+  const violationsByFile = {};
+  scanResult.violations.forEach((v) => {
+    if (!violationsByFile[v.file]) {
+      violationsByFile[v.file] = [];
+    }
+    violationsByFile[v.file].push(v);
+  });
+  const details = [];
+  let totalModifications = 0;
+  for (const [relPath, violations] of Object.entries(violationsByFile)) {
+    const fullPath = import_node_path6.default.resolve(cwd, relPath);
+    if (!import_node_fs6.default.existsSync(fullPath)) continue;
+    let content = import_node_fs6.default.readFileSync(fullPath, "utf-8");
+    const originalContent = content;
+    const fileFixes = [];
+    if (violations.some((v) => v.rule === "no-wrapping-compact-elements")) {
+      const before = content;
+      content = content.replace(/(<(?:Button|IconButton|Chip|Badge)\b[^>]*className=["'`][^"'`]*?)\b(?:whitespace-normal|whitespace-pre-wrap|flex-wrap)\b([^"'`]*?["'`])/g, (match, prefix, suffix) => {
+        return `${prefix}whitespace-nowrap shrink-0${suffix}`;
+      });
+      if (before !== content) {
+        fileFixes.push("Replaced wrapping classes with 'whitespace-nowrap shrink-0' on compact controls");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<button>"))) {
+      const before = content;
+      content = content.replace(/<button(\s|>)/g, "<Button$1");
+      content = content.replace(/<\/button>/g, "</Button>");
+      if (before !== content) {
+        if (!content.includes("import { Button }") && !content.includes("import Button") && !relPath.includes("components/ui/button")) {
+          content = `import { Button } from "@/components/ui/button";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <button> to <Button>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<select>"))) {
+      const before = content;
+      content = content.replace(/<select(\s|>)/g, "<Dropdown$1");
+      content = content.replace(/<\/select>/g, "</Dropdown>");
+      if (before !== content) {
+        if (!content.includes("import { Dropdown }") && !content.includes("import Dropdown") && !relPath.includes("components/ui/dropdown")) {
+          content = `import { Dropdown } from "@/components/ui/dropdown";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <select> to <Dropdown>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<textarea>"))) {
+      const before = content;
+      content = content.replace(/<textarea(\s|>)/g, "<Textarea$1");
+      content = content.replace(/<\/textarea>/g, "</Textarea>");
+      if (before !== content) {
+        if (!content.includes("import { Textarea }") && !content.includes("import Textarea") && !relPath.includes("components/ui/textarea")) {
+          content = `import { Textarea } from "@/components/ui/textarea";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <textarea> to <Textarea>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-arbitrary-text-size")) {
+      const before = content;
+      content = content.replace(/\btext-\[(?:13|13\.5|14|14\.5|15|15\.5)px\]\b/g, "text-sm");
+      content = content.replace(/\btext-\[(?:11|11\.5|12|12\.5)px\]\b/g, "text-xs");
+      content = content.replace(/\btext-\[(?:16|17)px\]\b/g, "text-base");
+      if (before !== content) {
+        fileFixes.push("Standardized arbitrary font sizes to compliant token scales");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-backdrop-blur")) {
+      const before = content;
+      content = content.replace(/\bbackdrop-blur(?:-(?:none|sm|md|lg|xl|2xl|3xl))?\b/g, "");
+      if (before !== content) {
+        fileFixes.push("Removed non-compliant backdrop-blur classes");
+      }
+    }
+    if (content !== originalContent) {
+      import_node_fs6.default.writeFileSync(fullPath, content, "utf-8");
+      totalModifications += fileFixes.length;
+      details.push({
+        file: relPath,
+        fixes: fileFixes
+      });
+    }
+  }
+  return {
+    filesFixed: details.length,
+    totalModifications,
+    details
+  };
+}
+
+// src/guardrails/index.ts
+var import_node_fs7 = __toESM(require("fs"), 1);
+var import_node_path7 = __toESM(require("path"), 1);
+function generateAgentInstructions(config) {
+  const allowedRadii = config.tokens?.geometry?.allowedRadii?.join(", ") || "0px, 8px, 12px, 16px, 9999px";
+  const maxControlHeight = config.tokens?.geometry?.maxControlHeight || 36;
+  const bannedColors = config.tokens?.colors?.bannedColorFamilies?.join(", ") || "slate, gray, zinc, stone, etc.";
+  return `<!-- BEGIN:DSE-AGENT-RULES -->
+# DESIGN SYSTEM ENFORCER (DSE) - MANDATORY RULES
+
+You MUST adhere to these design system invariants for all UI generation:
+
+1. COMPONENT INVARIANTS:
+   - NEVER use raw HTML: <button>, <select>, <textarea>, <table>, <input type="checkbox">, <input type="radio">.
+   - ALWAYS use standard primitives: <Button>, <Dropdown>, <Textarea>, <Table>, <Checkbox>, <Chip>.
+   - Never create pseudo-chips using raw <div> or <span> with background fills and borders. Use <Chip>.
+
+2. WRAP INTEGRITY (COMPACT ELEMENTS):
+   - Interactive compact elements (<Button>, <Chip>, <Badge>, <TableHead>, tabs) MUST NOT wrap text.
+   - ALWAYS include 'whitespace-nowrap shrink-0' on compact interactive components.
+
+3. GEOMETRY & RADII:
+   - Standard control height for buttons and inputs is strictly max ${maxControlHeight}px ('h-[36px]' or 'h-9').
+   - Allowed corner radii tokens: ${allowedRadii}. Never use random arbitrary radii.
+
+4. COLOR SCALE & PURITY:
+   - Strictly neutral palette for base surfaces and borders ('neutral-100' through 'neutral-900').
+   - Banned arbitrary color families: ${bannedColors}.
+   - Never use arbitrary inline hex colors ('#1a2b3c') in utility classes. Use design system CSS variables ('var(--primary)').
+
+5. BEFORE FINISHING UI EDITS:
+   - Run 'npx dse check' to verify zero design system violations.
+<!-- END:DSE-AGENT-RULES -->
+`;
+}
+function installPreCommitHook(cwd = process.cwd()) {
+  const gitDir = import_node_path7.default.resolve(cwd, ".git");
+  if (!import_node_fs7.default.existsSync(gitDir)) {
+    throw new Error("No .git repository found in this directory.");
+  }
+  const hooksDir = import_node_path7.default.resolve(gitDir, "hooks");
+  if (!import_node_fs7.default.existsSync(hooksDir)) {
+    import_node_fs7.default.mkdirSync(hooksDir, { recursive: true });
+  }
+  const hookPath = import_node_path7.default.resolve(hooksDir, "pre-commit");
+  const hookScript = `#!/usr/bin/env sh
+# Design System Enforcer (DSE) Pre-Commit Hook
+echo "
+\u{1F50D} Running Design System Enforcer pre-commit check..."
+
+if command -v npx >/dev/null 2>&1; then
+  npx dse check --strict
+  RESULT=$?
+  if [ $RESULT -ne 0 ]; then
+    echo "
+\u274C Commit rejected: Design System violations found."
+    echo "\u{1F4A1} Run 'npx dse fix' or 'npx dse check' to review issues.
+"
+    exit 1
+  fi
+fi
+`;
+  import_node_fs7.default.writeFileSync(hookPath, hookScript, { mode: 493 });
+  return true;
+}
+
 // src/cli.ts
 var program = new import_commander.Command();
-program.name("dse").description("Design System Enforcer (DSE) - AST-based Linter and Scaffold Engine").version("1.0.0");
+program.name("dse").description("Design System Enforcer (DSE) - AST-based Linter and Scaffold Engine").version("1.0.4");
 program.command("check [targetDir]", { isDefault: true }).description("Scan codebase and enforce Design System rules").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").option("-f, --format <format>", "Output format: 'stylish' | 'json'", "stylish").option("--strict", "Treat warnings as errors", false).action(async (targetDirArg, options) => {
   try {
-    const cwd = targetDirArg ? import_node_path6.default.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const cwd = targetDirArg ? import_node_path8.default.resolve(process.cwd(), targetDirArg) : process.cwd();
     const config = await loadConfig(cwd, options.config);
     const result = await runDseScan(config, cwd);
     if (options.format === "json") {
@@ -2461,76 +2732,125 @@ program.command("check [targetDir]", { isDefault: true }).description("Scan code
       process.exit(1);
     }
   } catch (err) {
-    console.error(import_picocolors2.default.red("Error running DSE scan:"), err);
+    console.error(import_picocolors3.default.red(`
+\u2716 Error running scan: ${err.message}`));
     process.exit(1);
   }
 });
-program.command("init").description("Initialize DSE configuration and optionally scaffold base primitives").option("--preset <name>", "Preset to use: 'berserk' | 'recommended' | 'python'").option("--with-primitives", "Scaffold full base primitives and tokens suite", false).action((options) => {
-  const cwd = process.cwd();
-  console.log(import_picocolors2.default.bold(import_picocolors2.default.cyan("\nInitializing Design System Enforcer (DSE)...")));
-  const isPythonProject = import_node_fs6.default.existsSync(import_node_path6.default.resolve(cwd, "requirements.txt")) || import_node_fs6.default.existsSync(import_node_path6.default.resolve(cwd, "pyproject.toml")) || import_node_fs6.default.existsSync(import_node_path6.default.resolve(cwd, ".streamlit"));
-  const preset = options.preset || (isPythonProject ? "python" : "berserk");
-  const configPath = scaffoldConfig(cwd, preset);
-  console.log(import_picocolors2.default.green("\u2714 Created config:"), import_picocolors2.default.bold(import_node_path6.default.relative(cwd, configPath)), import_picocolors2.default.dim(`(preset: ${preset})`));
-  const pkgPath = import_node_path6.default.resolve(cwd, "package.json");
-  if (import_node_fs6.default.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(import_node_fs6.default.readFileSync(pkgPath, "utf-8"));
-      pkg.scripts = pkg.scripts || {};
-      if (!pkg.scripts.dse) {
-        pkg.scripts.dse = "dse";
-        import_node_fs6.default.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
-        console.log(import_picocolors2.default.green("\u2714 Added script 'dse' to package.json"));
-      }
-    } catch (err) {
-      console.warn(import_picocolors2.default.yellow("\u26A0 Could not update package.json:"), err);
-    }
+program.command("doctor [targetDir]").description("Perform a visual Design System health audit and compute compliance score").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").action(async (targetDirArg, options) => {
+  try {
+    const cwd = targetDirArg ? import_node_path8.default.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const config = await loadConfig(cwd, options.config);
+    const result = await runDseScan(config, cwd);
+    const report = computeDoctorScore(result);
+    console.log(formatDoctorOutput(report));
+  } catch (err) {
+    console.error(import_picocolors3.default.red(`
+\u2716 Error generating health report: ${err.message}`));
+    process.exit(1);
   }
-  if (options.withPrimitives) {
-    console.log(import_picocolors2.default.cyan("Scaffolding primitives and theme tokens..."));
-    const created = scaffoldAllPrimitives(cwd);
-    created.forEach((file) => {
-      console.log(import_picocolors2.default.green("\u2714 Created:"), import_picocolors2.default.dim(import_node_path6.default.relative(cwd, file)));
-    });
-  } else {
-    console.log(
-      import_picocolors2.default.dim("\nTip: Run 'npx dse scaffold' to generate rule-compliant base primitives and tokens anytime.")
-    );
-  }
-  console.log(import_picocolors2.default.bold(import_picocolors2.default.green("\n\u2714 DSE setup complete! Run 'npm run dse' to verify your project.\n")));
 });
-program.command("add <components...>").description("Scaffold specific rule-compliant design system primitives (button, chip, input, table, tabs, card, checkbox, dropdown, skeleton)").action((components) => {
-  const cwd = process.cwd();
-  console.log(import_picocolors2.default.bold(import_picocolors2.default.cyan("\nScaffolding requested components...")));
-  for (const comp of components) {
-    const filePath = scaffoldComponent(comp, cwd);
-    if (filePath) {
-      console.log(import_picocolors2.default.green("\u2714 Created:"), import_picocolors2.default.bold(import_node_path6.default.relative(cwd, filePath)));
+program.command("fix [targetDir]").description("Automatically remediate common Design System violations in place").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").action(async (targetDirArg, options) => {
+  try {
+    const cwd = targetDirArg ? import_node_path8.default.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const config = await loadConfig(cwd, options.config);
+    console.log(import_picocolors3.default.cyan("\n\u{1F527} Running Design System Enforcer Auto-Fixer...\n"));
+    const fixReport = await runDseFix(config, cwd);
+    if (fixReport.filesFixed === 0) {
+      console.log(import_picocolors3.default.green("\u2714 No auto-fixable violations found. Your codebase is clean!"));
     } else {
-      console.log(
-        import_picocolors2.default.yellow(`\u26A0 Unknown component '${comp}'. Available: ${Object.keys(COMPONENT_TEMPLATES).join(", ")}`)
-      );
+      console.log(import_picocolors3.default.bold(import_picocolors3.default.green(`\u2714 Successfully fixed ${fixReport.totalModifications} issues across ${fixReport.filesFixed} files:
+`)));
+      fixReport.details.forEach((item) => {
+        console.log(`  ${import_picocolors3.default.bold(import_picocolors3.default.cyan(item.file))}:`);
+        item.fixes.forEach((f) => console.log(`    - ${import_picocolors3.default.dim(f)}`));
+      });
     }
+    console.log("");
+  } catch (err) {
+    console.error(import_picocolors3.default.red(`
+\u2716 Error during auto-fix: ${err.message}`));
+    process.exit(1);
   }
+});
+program.command("detect [targetDir]").description("Inspect project architecture, framework, libraries, and design tokens autonomously").action((targetDirArg) => {
+  const cwd = targetDirArg ? import_node_path8.default.resolve(process.cwd(), targetDirArg) : process.cwd();
+  const info = detectProject(cwd);
+  console.log(import_picocolors3.default.bold(import_picocolors3.default.cyan("\n\u{1F50D} DSE Autonomous Project Diagnostics\n")));
+  console.log(`  ${import_picocolors3.default.bold("Target Directory:")}   ${info.root}`);
+  console.log(`  ${import_picocolors3.default.bold("Framework:")}          ${import_picocolors3.default.green(info.framework)}`);
+  console.log(`  ${import_picocolors3.default.bold("Monorepo:")}           ${info.isMonorepo ? import_picocolors3.default.yellow("Yes") : "No"}`);
+  if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
+    console.log(`  ${import_picocolors3.default.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
+  }
+  console.log(`  ${import_picocolors3.default.bold("Libraries:")}          ${info.libraries.length ? import_picocolors3.default.magenta(info.libraries.join(", ")) : "None"}`);
+  console.log(`  ${import_picocolors3.default.bold("Tailwind CSS:")}       ${info.hasTailwind ? import_picocolors3.default.green(info.tailwindVersion || "Yes") : "No"}`);
+  console.log(`  ${import_picocolors3.default.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
+  console.log(`  ${import_picocolors3.default.bold("Tokens File:")}        ${info.tokensFile ? import_picocolors3.default.cyan(info.tokensFile) : import_picocolors3.default.dim("None (using preset defaults)")}`);
+  console.log(`  ${import_picocolors3.default.bold("Default Preset:")}     ${import_picocolors3.default.yellow(info.preset)}`);
+  console.log(`  ${import_picocolors3.default.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
+  console.log(`  ${import_picocolors3.default.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
   console.log("");
 });
-program.command("scaffold").description("Scaffold all base primitives and HSL tokens into src/components/ui/ and src/lib/").action(() => {
+program.command("export-agent").description("Export ultra-compact prompt rules for Cursor, Claude, Antigravity, or Copilot").option("-w, --write <file>", "Target file to write/append into (e.g. .cursorrules, AGENTS.md)").action(async (options) => {
   const cwd = process.cwd();
-  console.log(import_picocolors2.default.bold(import_picocolors2.default.cyan("\nScaffolding full design system suite...")));
-  const created = scaffoldAllPrimitives(cwd);
-  created.forEach((file) => {
-    console.log(import_picocolors2.default.green("\u2714 Created:"), import_picocolors2.default.bold(import_node_path6.default.relative(cwd, file)));
-  });
-  console.log(import_picocolors2.default.bold(import_picocolors2.default.green("\n\u2714 All design system primitives scaffolded successfully!\n")));
+  const config = await loadConfig(cwd);
+  const instructions = generateAgentInstructions(config);
+  if (options.write) {
+    const targetPath = import_node_path8.default.resolve(cwd, options.write);
+    if (import_node_fs8.default.existsSync(targetPath)) {
+      let existing = import_node_fs8.default.readFileSync(targetPath, "utf-8");
+      const startTag = "<!-- BEGIN:DSE-AGENT-RULES -->";
+      const endTag = "<!-- END:DSE-AGENT-RULES -->";
+      if (existing.includes(startTag) && existing.includes(endTag)) {
+        const regex = new RegExp(`${startTag}[\\s\\S]*?${endTag}`, "g");
+        existing = existing.replace(regex, instructions.trim());
+      } else {
+        existing = `${existing.trim()}
+
+${instructions.trim()}
+`;
+      }
+      import_node_fs8.default.writeFileSync(targetPath, existing, "utf-8");
+      console.log(import_picocolors3.default.green(`\u2714 Updated AI guardrails in ${options.write}`));
+    } else {
+      import_node_fs8.default.writeFileSync(targetPath, instructions, "utf-8");
+      console.log(import_picocolors3.default.green(`\u2714 Created ${options.write} with AI guardrails`));
+    }
+  } else {
+    console.log(instructions);
+  }
+});
+program.command("hook [action]").description("Install or manage git pre-commit hooks to block non-compliant commits").action((action) => {
+  if (action === "install" || !action) {
+    try {
+      installPreCommitHook(process.cwd());
+      console.log(import_picocolors3.default.bold(import_picocolors3.default.green("\n\u2714 Successfully installed pre-commit hook in .git/hooks/pre-commit!")));
+      console.log(import_picocolors3.default.dim("  Every git commit will now be checked with 'dse check --strict'.\n"));
+    } catch (err) {
+      console.error(import_picocolors3.default.red(`
+\u2716 Could not install hook: ${err.message}
+`));
+    }
+  }
+});
+program.command("init").description("Initialize DSE configuration in current repository").option("-p, --preset <name>", "Preset: berserk | recommended | minimal | python", "berserk").action((options) => {
+  scaffoldConfig(process.cwd(), options.preset);
+});
+program.command("scaffold-tokens").description("Generate official design system tokens TypeScript/CSS file").action(() => {
+  scaffoldTokens(process.cwd());
+});
+program.command("scaffold-primitives").description("Scaffold all canonical zero-compromise design system UI primitives").action(() => {
+  scaffoldAllPrimitives(process.cwd());
 });
 program.command("export-rules").description("Export rules in Markdown format for AI coding assistants (AGENTS.md, .cursorrules, CLAUDE.md)").option("-w, --write <file>", "Write directly to target file (e.g. AGENTS.md)").action(async (options) => {
   const cwd = process.cwd();
   const config = await loadConfig(cwd);
   const rulesMd = generateMarkdownRules(config);
   if (options.write) {
-    const targetFile = import_node_path6.default.resolve(cwd, options.write);
-    if (import_node_fs6.default.existsSync(targetFile)) {
-      let existing = import_node_fs6.default.readFileSync(targetFile, "utf-8");
+    const targetFile = import_node_path8.default.resolve(cwd, options.write);
+    if (import_node_fs8.default.existsSync(targetFile)) {
+      let existing = import_node_fs8.default.readFileSync(targetFile, "utf-8");
       const startTag = "<!-- BEGIN:design-system-enforcer-rules -->";
       const endTag = "<!-- END:design-system-enforcer-rules -->";
       if (existing.includes(startTag) && existing.includes(endTag)) {
@@ -2542,34 +2862,15 @@ program.command("export-rules").description("Export rules in Markdown format for
 ${rulesMd.trim()}
 `;
       }
-      import_node_fs6.default.writeFileSync(targetFile, existing, "utf-8");
-      console.log(import_picocolors2.default.green(`\u2714 Updated rules in ${options.write}`));
+      import_node_fs8.default.writeFileSync(targetFile, existing, "utf-8");
+      console.log(import_picocolors3.default.green(`\u2714 Updated rules in ${options.write}`));
     } else {
-      import_node_fs6.default.writeFileSync(targetFile, rulesMd, "utf-8");
-      console.log(import_picocolors2.default.green(`\u2714 Created ${options.write} with design system rules`));
+      import_node_fs8.default.writeFileSync(targetFile, rulesMd, "utf-8");
+      console.log(import_picocolors3.default.green(`\u2714 Created ${options.write} with design system rules`));
     }
   } else {
     console.log(rulesMd);
   }
-});
-program.command("detect [targetDir]").description("Inspect project architecture, framework, libraries, and design tokens autonomously").action((targetDirArg) => {
-  const cwd = targetDirArg ? import_node_path6.default.resolve(process.cwd(), targetDirArg) : process.cwd();
-  const info = detectProject(cwd);
-  console.log(import_picocolors2.default.bold(import_picocolors2.default.cyan("\n\u{1F50D} DSE Autonomous Project Diagnostics\n")));
-  console.log(`  ${import_picocolors2.default.bold("Target Directory:")}   ${info.root}`);
-  console.log(`  ${import_picocolors2.default.bold("Framework:")}          ${import_picocolors2.default.green(info.framework)}`);
-  console.log(`  ${import_picocolors2.default.bold("Monorepo:")}           ${info.isMonorepo ? import_picocolors2.default.yellow("Yes") : "No"}`);
-  if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
-    console.log(`  ${import_picocolors2.default.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
-  }
-  console.log(`  ${import_picocolors2.default.bold("Libraries:")}          ${info.libraries.length ? import_picocolors2.default.magenta(info.libraries.join(", ")) : "None"}`);
-  console.log(`  ${import_picocolors2.default.bold("Tailwind CSS:")}       ${info.hasTailwind ? import_picocolors2.default.green(info.tailwindVersion || "Yes") : "No"}`);
-  console.log(`  ${import_picocolors2.default.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
-  console.log(`  ${import_picocolors2.default.bold("Tokens File:")}        ${info.tokensFile ? import_picocolors2.default.cyan(info.tokensFile) : import_picocolors2.default.dim("None (using preset defaults)")}`);
-  console.log(`  ${import_picocolors2.default.bold("Default Preset:")}     ${import_picocolors2.default.yellow(info.preset)}`);
-  console.log(`  ${import_picocolors2.default.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
-  console.log(`  ${import_picocolors2.default.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
-  console.log("");
 });
 program.parse(process.argv);
 //# sourceMappingURL=cli.cjs.map

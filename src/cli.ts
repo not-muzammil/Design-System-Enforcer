@@ -15,14 +15,17 @@ import {
 } from "./scaffold/index.js";
 import { generateMarkdownRules } from "./export-rules/index.js";
 import { detectProject } from "./detector/index.js";
-
+import { computeDoctorScore } from "./doctor/index.js";
+import { formatDoctorOutput } from "./doctor/formatter.js";
+import { runDseFix } from "./fixer/index.js";
+import { generateAgentInstructions, installPreCommitHook } from "./guardrails/index.js";
 
 const program = new Command();
 
 program
   .name("dse")
   .description("Design System Enforcer (DSE) - AST-based Linter and Scaffold Engine")
-  .version("1.0.0");
+  .version("1.0.4");
 
 // ---------------------------------------------------------------------------
 // COMMAND: check (default)
@@ -52,9 +55,140 @@ program
       if (totalErrors > 0) {
         process.exit(1);
       }
-    } catch (err) {
-      console.error(pc.red("Error running DSE scan:"), err);
+    } catch (err: any) {
+      console.error(pc.red(`\n✖ Error running scan: ${err.message}`));
       process.exit(1);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// COMMAND: doctor (Visual Design Health Audit)
+// ---------------------------------------------------------------------------
+program
+  .command("doctor [targetDir]")
+  .description("Perform a visual Design System health audit and compute compliance score")
+  .option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json")
+  .action(async (targetDirArg, options) => {
+    try {
+      const cwd = targetDirArg ? path.resolve(process.cwd(), targetDirArg) : process.cwd();
+      const config = await loadConfig(cwd, options.config);
+      const result = await runDseScan(config, cwd);
+      const report = computeDoctorScore(result);
+      console.log(formatDoctorOutput(report));
+    } catch (err: any) {
+      console.error(pc.red(`\n✖ Error generating health report: ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// COMMAND: fix (One-Click Auto-Remediation)
+// ---------------------------------------------------------------------------
+program
+  .command("fix [targetDir]")
+  .description("Automatically remediate common Design System violations in place")
+  .option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json")
+  .action(async (targetDirArg, options) => {
+    try {
+      const cwd = targetDirArg ? path.resolve(process.cwd(), targetDirArg) : process.cwd();
+      const config = await loadConfig(cwd, options.config);
+      console.log(pc.cyan("\n🔧 Running Design System Enforcer Auto-Fixer...\n"));
+      const fixReport = await runDseFix(config, cwd);
+
+      if (fixReport.filesFixed === 0) {
+        console.log(pc.green("✔ No auto-fixable violations found. Your codebase is clean!"));
+      } else {
+        console.log(pc.bold(pc.green(`✔ Successfully fixed ${fixReport.totalModifications} issues across ${fixReport.filesFixed} files:\n`)));
+        fixReport.details.forEach((item) => {
+          console.log(`  ${pc.bold(pc.cyan(item.file))}:`);
+          item.fixes.forEach((f) => console.log(`    - ${pc.dim(f)}`));
+        });
+      }
+      console.log("");
+    } catch (err: any) {
+      console.error(pc.red(`\n✖ Error during auto-fix: ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// COMMAND: detect (autonomous diagnostics)
+// ---------------------------------------------------------------------------
+program
+  .command("detect [targetDir]")
+  .description("Inspect project architecture, framework, libraries, and design tokens autonomously")
+  .action((targetDirArg) => {
+    const cwd = targetDirArg ? path.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const info = detectProject(cwd);
+
+    console.log(pc.bold(pc.cyan("\n🔍 DSE Autonomous Project Diagnostics\n")));
+    console.log(`  ${pc.bold("Target Directory:")}   ${info.root}`);
+    console.log(`  ${pc.bold("Framework:")}          ${pc.green(info.framework)}`);
+    console.log(`  ${pc.bold("Monorepo:")}           ${info.isMonorepo ? pc.yellow("Yes") : "No"}`);
+    if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
+      console.log(`  ${pc.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
+    }
+    console.log(`  ${pc.bold("Libraries:")}          ${info.libraries.length ? pc.magenta(info.libraries.join(", ")) : "None"}`);
+    console.log(`  ${pc.bold("Tailwind CSS:")}       ${info.hasTailwind ? pc.green(info.tailwindVersion || "Yes") : "No"}`);
+    console.log(`  ${pc.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
+    console.log(`  ${pc.bold("Tokens File:")}        ${info.tokensFile ? pc.cyan(info.tokensFile) : pc.dim("None (using preset defaults)")}`);
+    console.log(`  ${pc.bold("Default Preset:")}     ${pc.yellow(info.preset)}`);
+    console.log(`  ${pc.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
+    console.log(`  ${pc.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
+    console.log("");
+  });
+
+// ---------------------------------------------------------------------------
+// COMMAND: export-agent (AI Coding Assistant Guardrails)
+// ---------------------------------------------------------------------------
+program
+  .command("export-agent")
+  .description("Export ultra-compact prompt rules for Cursor, Claude, Antigravity, or Copilot")
+  .option("-w, --write <file>", "Target file to write/append into (e.g. .cursorrules, AGENTS.md)")
+  .action(async (options) => {
+    const cwd = process.cwd();
+    const config = await loadConfig(cwd);
+    const instructions = generateAgentInstructions(config);
+
+    if (options.write) {
+      const targetPath = path.resolve(cwd, options.write);
+      if (fs.existsSync(targetPath)) {
+        let existing = fs.readFileSync(targetPath, "utf-8");
+        const startTag = "<!-- BEGIN:DSE-AGENT-RULES -->";
+        const endTag = "<!-- END:DSE-AGENT-RULES -->";
+
+        if (existing.includes(startTag) && existing.includes(endTag)) {
+          const regex = new RegExp(`${startTag}[\\s\\S]*?${endTag}`, "g");
+          existing = existing.replace(regex, instructions.trim());
+        } else {
+          existing = `${existing.trim()}\n\n${instructions.trim()}\n`;
+        }
+        fs.writeFileSync(targetPath, existing, "utf-8");
+        console.log(pc.green(`✔ Updated AI guardrails in ${options.write}`));
+      } else {
+        fs.writeFileSync(targetPath, instructions, "utf-8");
+        console.log(pc.green(`✔ Created ${options.write} with AI guardrails`));
+      }
+    } else {
+      console.log(instructions);
+    }
+  });
+
+// ---------------------------------------------------------------------------
+// COMMAND: hook (Git Pre-Commit Enforcer)
+// ---------------------------------------------------------------------------
+program
+  .command("hook [action]")
+  .description("Install or manage git pre-commit hooks to block non-compliant commits")
+  .action((action) => {
+    if (action === "install" || !action) {
+      try {
+        installPreCommitHook(process.cwd());
+        console.log(pc.bold(pc.green("\n✔ Successfully installed pre-commit hook in .git/hooks/pre-commit!")));
+        console.log(pc.dim("  Every git commit will now be checked with 'dse check --strict'.\n"));
+      } catch (err: any) {
+        console.error(pc.red(`\n✖ Could not install hook: ${err.message}\n`));
+      }
     }
   });
 
@@ -63,93 +197,30 @@ program
 // ---------------------------------------------------------------------------
 program
   .command("init")
-  .description("Initialize DSE configuration and optionally scaffold base primitives")
-  .option("--preset <name>", "Preset to use: 'berserk' | 'recommended' | 'python'")
-  .option("--with-primitives", "Scaffold full base primitives and tokens suite", false)
+  .description("Initialize DSE configuration in current repository")
+  .option("-p, --preset <name>", "Preset: berserk | recommended | minimal | python", "berserk")
   .action((options) => {
-    const cwd = process.cwd();
-    console.log(pc.bold(pc.cyan("\nInitializing Design System Enforcer (DSE)...")));
-
-    const isPythonProject =
-      fs.existsSync(path.resolve(cwd, "requirements.txt")) ||
-      fs.existsSync(path.resolve(cwd, "pyproject.toml")) ||
-      fs.existsSync(path.resolve(cwd, ".streamlit"));
-
-    const preset = options.preset || (isPythonProject ? "python" : "berserk");
-
-    // 1. Create config
-    const configPath = scaffoldConfig(cwd, preset);
-    console.log(pc.green("✔ Created config:"), pc.bold(path.relative(cwd, configPath)), pc.dim(`(preset: ${preset})`));
-
-    // 2. Add "dse": "dse" to package.json if present
-    const pkgPath = path.resolve(cwd, "package.json");
-    if (fs.existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        pkg.scripts = pkg.scripts || {};
-        if (!pkg.scripts.dse) {
-          pkg.scripts.dse = "dse";
-          fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
-          console.log(pc.green("✔ Added script 'dse' to package.json"));
-        }
-      } catch (err) {
-        console.warn(pc.yellow("⚠ Could not update package.json:"), err);
-      }
-    }
-
-    // 3. Optionally scaffold primitives
-    if (options.withPrimitives) {
-      console.log(pc.cyan("Scaffolding primitives and theme tokens..."));
-      const created = scaffoldAllPrimitives(cwd);
-      created.forEach((file) => {
-        console.log(pc.green("✔ Created:"), pc.dim(path.relative(cwd, file)));
-      });
-    } else {
-      console.log(
-        pc.dim("\nTip: Run 'npx dse scaffold' to generate rule-compliant base primitives and tokens anytime.")
-      );
-    }
-
-    console.log(pc.bold(pc.green("\n✔ DSE setup complete! Run 'npm run dse' to verify your project.\n")));
+    scaffoldConfig(process.cwd(), options.preset);
   });
 
 // ---------------------------------------------------------------------------
-// COMMAND: add <components...>
+// COMMAND: scaffold-tokens
 // ---------------------------------------------------------------------------
 program
-  .command("add <components...>")
-  .description("Scaffold specific rule-compliant design system primitives (button, chip, input, table, tabs, card, checkbox, dropdown, skeleton)")
-  .action((components: string[]) => {
-    const cwd = process.cwd();
-    console.log(pc.bold(pc.cyan("\nScaffolding requested components...")));
-
-    for (const comp of components) {
-      const filePath = scaffoldComponent(comp, cwd);
-      if (filePath) {
-        console.log(pc.green("✔ Created:"), pc.bold(path.relative(cwd, filePath)));
-      } else {
-        console.log(
-          pc.yellow(`⚠ Unknown component '${comp}'. Available: ${Object.keys(COMPONENT_TEMPLATES).join(", ")}`)
-        );
-      }
-    }
-    console.log("");
-  });
-
-// ---------------------------------------------------------------------------
-// COMMAND: scaffold
-// ---------------------------------------------------------------------------
-program
-  .command("scaffold")
-  .description("Scaffold all base primitives and HSL tokens into src/components/ui/ and src/lib/")
+  .command("scaffold-tokens")
+  .description("Generate official design system tokens TypeScript/CSS file")
   .action(() => {
-    const cwd = process.cwd();
-    console.log(pc.bold(pc.cyan("\nScaffolding full design system suite...")));
-    const created = scaffoldAllPrimitives(cwd);
-    created.forEach((file) => {
-      console.log(pc.green("✔ Created:"), pc.bold(path.relative(cwd, file)));
-    });
-    console.log(pc.bold(pc.green("\n✔ All design system primitives scaffolded successfully!\n")));
+    scaffoldTokens(process.cwd());
+  });
+
+// ---------------------------------------------------------------------------
+// COMMAND: scaffold-primitives
+// ---------------------------------------------------------------------------
+program
+  .command("scaffold-primitives")
+  .description("Scaffold all canonical zero-compromise design system UI primitives")
+  .action(() => {
+    scaffoldAllPrimitives(process.cwd());
   });
 
 // ---------------------------------------------------------------------------
@@ -188,33 +259,4 @@ program
     }
   });
 
-// ---------------------------------------------------------------------------
-// COMMAND: detect (autonomous diagnostics)
-// ---------------------------------------------------------------------------
-program
-  .command("detect [targetDir]")
-  .description("Inspect project architecture, framework, libraries, and design tokens autonomously")
-  .action((targetDirArg) => {
-    const cwd = targetDirArg ? path.resolve(process.cwd(), targetDirArg) : process.cwd();
-    const info = detectProject(cwd);
-
-    console.log(pc.bold(pc.cyan("\n🔍 DSE Autonomous Project Diagnostics\n")));
-    console.log(`  ${pc.bold("Target Directory:")}   ${info.root}`);
-    console.log(`  ${pc.bold("Framework:")}          ${pc.green(info.framework)}`);
-    console.log(`  ${pc.bold("Monorepo:")}           ${info.isMonorepo ? pc.yellow("Yes") : "No"}`);
-    if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
-      console.log(`  ${pc.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
-    }
-    console.log(`  ${pc.bold("Libraries:")}          ${info.libraries.length ? pc.magenta(info.libraries.join(", ")) : "None"}`);
-    console.log(`  ${pc.bold("Tailwind CSS:")}       ${info.hasTailwind ? pc.green(info.tailwindVersion || "Yes") : "No"}`);
-    console.log(`  ${pc.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
-    console.log(`  ${pc.bold("Tokens File:")}        ${info.tokensFile ? pc.cyan(info.tokensFile) : pc.dim("None (using preset defaults)")}`);
-    console.log(`  ${pc.bold("Default Preset:")}     ${pc.yellow(info.preset)}`);
-    console.log(`  ${pc.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
-    console.log(`  ${pc.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
-    console.log("");
-  });
-
 program.parse(process.argv);
-
-

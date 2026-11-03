@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 // src/cli.ts
-import fs6 from "fs";
-import path6 from "path";
+import fs8 from "fs";
+import path8 from "path";
 import { Command } from "commander";
-import pc2 from "picocolors";
+import pc3 from "picocolors";
 
 // src/config/loader.ts
 import fs3 from "fs";
@@ -2420,12 +2420,283 @@ function generateMarkdownRules(config) {
 `;
 }
 
+// src/doctor/index.ts
+function computeDoctorScore(result) {
+  const categoryViolations = {
+    typography: 0,
+    geometry: 0,
+    components: 0,
+    colors: 0,
+    wrapping: 0,
+    tables: 0
+  };
+  const fileCountMap = {};
+  result.violations.forEach((v) => {
+    fileCountMap[v.file] = (fileCountMap[v.file] || 0) + 1;
+    if (v.rule.startsWith("font-") || v.rule.includes("text-size") || v.rule.includes("uppercase")) {
+      categoryViolations.typography++;
+    } else if (v.rule.includes("wrapping")) {
+      categoryViolations.wrapping++;
+    } else if (v.rule.startsWith("control-") || v.rule.startsWith("corner-radius")) {
+      categoryViolations.geometry++;
+    } else if (v.rule.includes("color") || v.rule.includes("gradient") || v.rule.includes("blur")) {
+      categoryViolations.colors++;
+    } else if (v.rule.startsWith("table-")) {
+      categoryViolations.tables++;
+    } else {
+      categoryViolations.components++;
+    }
+  });
+  const filesCount = Math.max(1, result.scannedFilesCount || 1);
+  function calcScore(violations) {
+    const penaltyPerViolation = 100 / (filesCount * 2);
+    return Math.max(0, Math.round(100 - violations * penaltyPerViolation));
+  }
+  const categories = [
+    { name: "Typography Scale", category: "typography", violations: categoryViolations.typography, score: calcScore(categoryViolations.typography) },
+    { name: "Geometry & Radii", category: "geometry", violations: categoryViolations.geometry, score: calcScore(categoryViolations.geometry) },
+    { name: "Wrap Integrity", category: "wrapping", violations: categoryViolations.wrapping, score: calcScore(categoryViolations.wrapping) },
+    { name: "Component Inventory", category: "components", violations: categoryViolations.components, score: calcScore(categoryViolations.components) },
+    { name: "Color Purity", category: "colors", violations: categoryViolations.colors, score: calcScore(categoryViolations.colors) },
+    { name: "Table Invariants", category: "tables", violations: categoryViolations.tables, score: calcScore(categoryViolations.tables) }
+  ];
+  const totalScore = Math.round(categories.reduce((acc, c) => acc + c.score, 0) / categories.length);
+  let grade = "F";
+  if (totalScore >= 98) grade = "A+";
+  else if (totalScore >= 90) grade = "A";
+  else if (totalScore >= 80) grade = "B";
+  else if (totalScore >= 70) grade = "C";
+  else if (totalScore >= 60) grade = "D";
+  const fileBreakdown = Object.entries(fileCountMap).map(([file, violations]) => ({ file, violations })).sort((a, b) => b.violations - a.violations).slice(0, 5);
+  return {
+    overallScore: totalScore,
+    grade,
+    scannedFiles: filesCount,
+    totalViolations: result.violations.length,
+    categories,
+    fileBreakdown
+  };
+}
+
+// src/doctor/formatter.ts
+import pc2 from "picocolors";
+function renderProgressBar(percentage, width = 20) {
+  const filledChars = Math.round(percentage / 100 * width);
+  const emptyChars = width - filledChars;
+  let colorFn = pc2.green;
+  if (percentage < 70) colorFn = pc2.red;
+  else if (percentage < 90) colorFn = pc2.yellow;
+  const bar = colorFn("\u2588".repeat(filledChars)) + pc2.dim("\u2591".repeat(emptyChars));
+  return `${bar} ${colorFn(percentage.toString().padStart(3) + "%")}`;
+}
+function formatDoctorOutput(report) {
+  const lines = [];
+  lines.push("");
+  lines.push(pc2.bold(pc2.cyan("========================================================")));
+  lines.push(pc2.bold(pc2.cyan("       DESIGN SYSTEM ENFORCER - HEALTH REPORT           ")));
+  lines.push(pc2.bold(pc2.cyan("========================================================")));
+  lines.push("");
+  let gradeColor = pc2.green;
+  if (report.grade === "B") gradeColor = pc2.cyan;
+  else if (report.grade === "C") gradeColor = pc2.yellow;
+  else if (report.grade === "D" || report.grade === "F") gradeColor = pc2.red;
+  lines.push(
+    `  ${pc2.bold("Overall Score:")}  ${gradeColor(pc2.bold(report.overallScore + "/100"))}  [${gradeColor(pc2.bold(report.grade))}]`
+  );
+  lines.push(`  ${pc2.bold("Scanned Files:")}  ${pc2.white(report.scannedFiles)}`);
+  lines.push(`  ${pc2.bold("Total Issues:")}   ${report.totalViolations === 0 ? pc2.green("0") : pc2.red(report.totalViolations)}`);
+  lines.push("");
+  lines.push(pc2.bold("  Category Compliance:"));
+  report.categories.forEach((cat) => {
+    const paddedName = cat.name.padEnd(22, " ");
+    const issueCount = cat.violations > 0 ? pc2.dim(`(${cat.violations} issues)`) : "";
+    lines.push(`    ${pc2.dim(paddedName)} ${renderProgressBar(cat.score)} ${issueCount}`);
+  });
+  lines.push("");
+  if (report.fileBreakdown.length > 0) {
+    lines.push(pc2.bold(pc2.yellow("  Top Offending Files:")));
+    report.fileBreakdown.forEach((item, idx) => {
+      lines.push(`    ${idx + 1}. ${pc2.cyan(item.file)}: ${pc2.red(item.violations + " violations")}`);
+    });
+    lines.push("");
+    lines.push(pc2.dim("  Run 'dse check' for detailed line-by-line violation reports."));
+    lines.push(pc2.dim("  Run 'dse fix' to automatically remediate common violations."));
+  } else {
+    lines.push(pc2.bold(pc2.green("  \u2714 All design tokens and component invariants are 100% compliant!")));
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+// src/fixer/index.ts
+import fs6 from "fs";
+import path6 from "path";
+async function runDseFix(config, cwd = process.cwd()) {
+  const scanResult = await runDseScan(config, cwd);
+  const violationsByFile = {};
+  scanResult.violations.forEach((v) => {
+    if (!violationsByFile[v.file]) {
+      violationsByFile[v.file] = [];
+    }
+    violationsByFile[v.file].push(v);
+  });
+  const details = [];
+  let totalModifications = 0;
+  for (const [relPath, violations] of Object.entries(violationsByFile)) {
+    const fullPath = path6.resolve(cwd, relPath);
+    if (!fs6.existsSync(fullPath)) continue;
+    let content = fs6.readFileSync(fullPath, "utf-8");
+    const originalContent = content;
+    const fileFixes = [];
+    if (violations.some((v) => v.rule === "no-wrapping-compact-elements")) {
+      const before = content;
+      content = content.replace(/(<(?:Button|IconButton|Chip|Badge)\b[^>]*className=["'`][^"'`]*?)\b(?:whitespace-normal|whitespace-pre-wrap|flex-wrap)\b([^"'`]*?["'`])/g, (match, prefix, suffix) => {
+        return `${prefix}whitespace-nowrap shrink-0${suffix}`;
+      });
+      if (before !== content) {
+        fileFixes.push("Replaced wrapping classes with 'whitespace-nowrap shrink-0' on compact controls");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<button>"))) {
+      const before = content;
+      content = content.replace(/<button(\s|>)/g, "<Button$1");
+      content = content.replace(/<\/button>/g, "</Button>");
+      if (before !== content) {
+        if (!content.includes("import { Button }") && !content.includes("import Button") && !relPath.includes("components/ui/button")) {
+          content = `import { Button } from "@/components/ui/button";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <button> to <Button>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<select>"))) {
+      const before = content;
+      content = content.replace(/<select(\s|>)/g, "<Dropdown$1");
+      content = content.replace(/<\/select>/g, "</Dropdown>");
+      if (before !== content) {
+        if (!content.includes("import { Dropdown }") && !content.includes("import Dropdown") && !relPath.includes("components/ui/dropdown")) {
+          content = `import { Dropdown } from "@/components/ui/dropdown";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <select> to <Dropdown>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<textarea>"))) {
+      const before = content;
+      content = content.replace(/<textarea(\s|>)/g, "<Textarea$1");
+      content = content.replace(/<\/textarea>/g, "</Textarea>");
+      if (before !== content) {
+        if (!content.includes("import { Textarea }") && !content.includes("import Textarea") && !relPath.includes("components/ui/textarea")) {
+          content = `import { Textarea } from "@/components/ui/textarea";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <textarea> to <Textarea>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-arbitrary-text-size")) {
+      const before = content;
+      content = content.replace(/\btext-\[(?:13|13\.5|14|14\.5|15|15\.5)px\]\b/g, "text-sm");
+      content = content.replace(/\btext-\[(?:11|11\.5|12|12\.5)px\]\b/g, "text-xs");
+      content = content.replace(/\btext-\[(?:16|17)px\]\b/g, "text-base");
+      if (before !== content) {
+        fileFixes.push("Standardized arbitrary font sizes to compliant token scales");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-backdrop-blur")) {
+      const before = content;
+      content = content.replace(/\bbackdrop-blur(?:-(?:none|sm|md|lg|xl|2xl|3xl))?\b/g, "");
+      if (before !== content) {
+        fileFixes.push("Removed non-compliant backdrop-blur classes");
+      }
+    }
+    if (content !== originalContent) {
+      fs6.writeFileSync(fullPath, content, "utf-8");
+      totalModifications += fileFixes.length;
+      details.push({
+        file: relPath,
+        fixes: fileFixes
+      });
+    }
+  }
+  return {
+    filesFixed: details.length,
+    totalModifications,
+    details
+  };
+}
+
+// src/guardrails/index.ts
+import fs7 from "fs";
+import path7 from "path";
+function generateAgentInstructions(config) {
+  const allowedRadii = config.tokens?.geometry?.allowedRadii?.join(", ") || "0px, 8px, 12px, 16px, 9999px";
+  const maxControlHeight = config.tokens?.geometry?.maxControlHeight || 36;
+  const bannedColors = config.tokens?.colors?.bannedColorFamilies?.join(", ") || "slate, gray, zinc, stone, etc.";
+  return `<!-- BEGIN:DSE-AGENT-RULES -->
+# DESIGN SYSTEM ENFORCER (DSE) - MANDATORY RULES
+
+You MUST adhere to these design system invariants for all UI generation:
+
+1. COMPONENT INVARIANTS:
+   - NEVER use raw HTML: <button>, <select>, <textarea>, <table>, <input type="checkbox">, <input type="radio">.
+   - ALWAYS use standard primitives: <Button>, <Dropdown>, <Textarea>, <Table>, <Checkbox>, <Chip>.
+   - Never create pseudo-chips using raw <div> or <span> with background fills and borders. Use <Chip>.
+
+2. WRAP INTEGRITY (COMPACT ELEMENTS):
+   - Interactive compact elements (<Button>, <Chip>, <Badge>, <TableHead>, tabs) MUST NOT wrap text.
+   - ALWAYS include 'whitespace-nowrap shrink-0' on compact interactive components.
+
+3. GEOMETRY & RADII:
+   - Standard control height for buttons and inputs is strictly max ${maxControlHeight}px ('h-[36px]' or 'h-9').
+   - Allowed corner radii tokens: ${allowedRadii}. Never use random arbitrary radii.
+
+4. COLOR SCALE & PURITY:
+   - Strictly neutral palette for base surfaces and borders ('neutral-100' through 'neutral-900').
+   - Banned arbitrary color families: ${bannedColors}.
+   - Never use arbitrary inline hex colors ('#1a2b3c') in utility classes. Use design system CSS variables ('var(--primary)').
+
+5. BEFORE FINISHING UI EDITS:
+   - Run 'npx dse check' to verify zero design system violations.
+<!-- END:DSE-AGENT-RULES -->
+`;
+}
+function installPreCommitHook(cwd = process.cwd()) {
+  const gitDir = path7.resolve(cwd, ".git");
+  if (!fs7.existsSync(gitDir)) {
+    throw new Error("No .git repository found in this directory.");
+  }
+  const hooksDir = path7.resolve(gitDir, "hooks");
+  if (!fs7.existsSync(hooksDir)) {
+    fs7.mkdirSync(hooksDir, { recursive: true });
+  }
+  const hookPath = path7.resolve(hooksDir, "pre-commit");
+  const hookScript = `#!/usr/bin/env sh
+# Design System Enforcer (DSE) Pre-Commit Hook
+echo "
+\u{1F50D} Running Design System Enforcer pre-commit check..."
+
+if command -v npx >/dev/null 2>&1; then
+  npx dse check --strict
+  RESULT=$?
+  if [ $RESULT -ne 0 ]; then
+    echo "
+\u274C Commit rejected: Design System violations found."
+    echo "\u{1F4A1} Run 'npx dse fix' or 'npx dse check' to review issues.
+"
+    exit 1
+  fi
+fi
+`;
+  fs7.writeFileSync(hookPath, hookScript, { mode: 493 });
+  return true;
+}
+
 // src/cli.ts
 var program = new Command();
-program.name("dse").description("Design System Enforcer (DSE) - AST-based Linter and Scaffold Engine").version("1.0.0");
+program.name("dse").description("Design System Enforcer (DSE) - AST-based Linter and Scaffold Engine").version("1.0.4");
 program.command("check [targetDir]", { isDefault: true }).description("Scan codebase and enforce Design System rules").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").option("-f, --format <format>", "Output format: 'stylish' | 'json'", "stylish").option("--strict", "Treat warnings as errors", false).action(async (targetDirArg, options) => {
   try {
-    const cwd = targetDirArg ? path6.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const cwd = targetDirArg ? path8.resolve(process.cwd(), targetDirArg) : process.cwd();
     const config = await loadConfig(cwd, options.config);
     const result = await runDseScan(config, cwd);
     if (options.format === "json") {
@@ -2438,76 +2709,125 @@ program.command("check [targetDir]", { isDefault: true }).description("Scan code
       process.exit(1);
     }
   } catch (err) {
-    console.error(pc2.red("Error running DSE scan:"), err);
+    console.error(pc3.red(`
+\u2716 Error running scan: ${err.message}`));
     process.exit(1);
   }
 });
-program.command("init").description("Initialize DSE configuration and optionally scaffold base primitives").option("--preset <name>", "Preset to use: 'berserk' | 'recommended' | 'python'").option("--with-primitives", "Scaffold full base primitives and tokens suite", false).action((options) => {
-  const cwd = process.cwd();
-  console.log(pc2.bold(pc2.cyan("\nInitializing Design System Enforcer (DSE)...")));
-  const isPythonProject = fs6.existsSync(path6.resolve(cwd, "requirements.txt")) || fs6.existsSync(path6.resolve(cwd, "pyproject.toml")) || fs6.existsSync(path6.resolve(cwd, ".streamlit"));
-  const preset = options.preset || (isPythonProject ? "python" : "berserk");
-  const configPath = scaffoldConfig(cwd, preset);
-  console.log(pc2.green("\u2714 Created config:"), pc2.bold(path6.relative(cwd, configPath)), pc2.dim(`(preset: ${preset})`));
-  const pkgPath = path6.resolve(cwd, "package.json");
-  if (fs6.existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(fs6.readFileSync(pkgPath, "utf-8"));
-      pkg.scripts = pkg.scripts || {};
-      if (!pkg.scripts.dse) {
-        pkg.scripts.dse = "dse";
-        fs6.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
-        console.log(pc2.green("\u2714 Added script 'dse' to package.json"));
-      }
-    } catch (err) {
-      console.warn(pc2.yellow("\u26A0 Could not update package.json:"), err);
-    }
+program.command("doctor [targetDir]").description("Perform a visual Design System health audit and compute compliance score").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").action(async (targetDirArg, options) => {
+  try {
+    const cwd = targetDirArg ? path8.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const config = await loadConfig(cwd, options.config);
+    const result = await runDseScan(config, cwd);
+    const report = computeDoctorScore(result);
+    console.log(formatDoctorOutput(report));
+  } catch (err) {
+    console.error(pc3.red(`
+\u2716 Error generating health report: ${err.message}`));
+    process.exit(1);
   }
-  if (options.withPrimitives) {
-    console.log(pc2.cyan("Scaffolding primitives and theme tokens..."));
-    const created = scaffoldAllPrimitives(cwd);
-    created.forEach((file) => {
-      console.log(pc2.green("\u2714 Created:"), pc2.dim(path6.relative(cwd, file)));
-    });
-  } else {
-    console.log(
-      pc2.dim("\nTip: Run 'npx dse scaffold' to generate rule-compliant base primitives and tokens anytime.")
-    );
-  }
-  console.log(pc2.bold(pc2.green("\n\u2714 DSE setup complete! Run 'npm run dse' to verify your project.\n")));
 });
-program.command("add <components...>").description("Scaffold specific rule-compliant design system primitives (button, chip, input, table, tabs, card, checkbox, dropdown, skeleton)").action((components) => {
-  const cwd = process.cwd();
-  console.log(pc2.bold(pc2.cyan("\nScaffolding requested components...")));
-  for (const comp of components) {
-    const filePath = scaffoldComponent(comp, cwd);
-    if (filePath) {
-      console.log(pc2.green("\u2714 Created:"), pc2.bold(path6.relative(cwd, filePath)));
+program.command("fix [targetDir]").description("Automatically remediate common Design System violations in place").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").action(async (targetDirArg, options) => {
+  try {
+    const cwd = targetDirArg ? path8.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const config = await loadConfig(cwd, options.config);
+    console.log(pc3.cyan("\n\u{1F527} Running Design System Enforcer Auto-Fixer...\n"));
+    const fixReport = await runDseFix(config, cwd);
+    if (fixReport.filesFixed === 0) {
+      console.log(pc3.green("\u2714 No auto-fixable violations found. Your codebase is clean!"));
     } else {
-      console.log(
-        pc2.yellow(`\u26A0 Unknown component '${comp}'. Available: ${Object.keys(COMPONENT_TEMPLATES).join(", ")}`)
-      );
+      console.log(pc3.bold(pc3.green(`\u2714 Successfully fixed ${fixReport.totalModifications} issues across ${fixReport.filesFixed} files:
+`)));
+      fixReport.details.forEach((item) => {
+        console.log(`  ${pc3.bold(pc3.cyan(item.file))}:`);
+        item.fixes.forEach((f) => console.log(`    - ${pc3.dim(f)}`));
+      });
     }
+    console.log("");
+  } catch (err) {
+    console.error(pc3.red(`
+\u2716 Error during auto-fix: ${err.message}`));
+    process.exit(1);
   }
+});
+program.command("detect [targetDir]").description("Inspect project architecture, framework, libraries, and design tokens autonomously").action((targetDirArg) => {
+  const cwd = targetDirArg ? path8.resolve(process.cwd(), targetDirArg) : process.cwd();
+  const info = detectProject(cwd);
+  console.log(pc3.bold(pc3.cyan("\n\u{1F50D} DSE Autonomous Project Diagnostics\n")));
+  console.log(`  ${pc3.bold("Target Directory:")}   ${info.root}`);
+  console.log(`  ${pc3.bold("Framework:")}          ${pc3.green(info.framework)}`);
+  console.log(`  ${pc3.bold("Monorepo:")}           ${info.isMonorepo ? pc3.yellow("Yes") : "No"}`);
+  if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
+    console.log(`  ${pc3.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
+  }
+  console.log(`  ${pc3.bold("Libraries:")}          ${info.libraries.length ? pc3.magenta(info.libraries.join(", ")) : "None"}`);
+  console.log(`  ${pc3.bold("Tailwind CSS:")}       ${info.hasTailwind ? pc3.green(info.tailwindVersion || "Yes") : "No"}`);
+  console.log(`  ${pc3.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
+  console.log(`  ${pc3.bold("Tokens File:")}        ${info.tokensFile ? pc3.cyan(info.tokensFile) : pc3.dim("None (using preset defaults)")}`);
+  console.log(`  ${pc3.bold("Default Preset:")}     ${pc3.yellow(info.preset)}`);
+  console.log(`  ${pc3.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
+  console.log(`  ${pc3.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
   console.log("");
 });
-program.command("scaffold").description("Scaffold all base primitives and HSL tokens into src/components/ui/ and src/lib/").action(() => {
+program.command("export-agent").description("Export ultra-compact prompt rules for Cursor, Claude, Antigravity, or Copilot").option("-w, --write <file>", "Target file to write/append into (e.g. .cursorrules, AGENTS.md)").action(async (options) => {
   const cwd = process.cwd();
-  console.log(pc2.bold(pc2.cyan("\nScaffolding full design system suite...")));
-  const created = scaffoldAllPrimitives(cwd);
-  created.forEach((file) => {
-    console.log(pc2.green("\u2714 Created:"), pc2.bold(path6.relative(cwd, file)));
-  });
-  console.log(pc2.bold(pc2.green("\n\u2714 All design system primitives scaffolded successfully!\n")));
+  const config = await loadConfig(cwd);
+  const instructions = generateAgentInstructions(config);
+  if (options.write) {
+    const targetPath = path8.resolve(cwd, options.write);
+    if (fs8.existsSync(targetPath)) {
+      let existing = fs8.readFileSync(targetPath, "utf-8");
+      const startTag = "<!-- BEGIN:DSE-AGENT-RULES -->";
+      const endTag = "<!-- END:DSE-AGENT-RULES -->";
+      if (existing.includes(startTag) && existing.includes(endTag)) {
+        const regex = new RegExp(`${startTag}[\\s\\S]*?${endTag}`, "g");
+        existing = existing.replace(regex, instructions.trim());
+      } else {
+        existing = `${existing.trim()}
+
+${instructions.trim()}
+`;
+      }
+      fs8.writeFileSync(targetPath, existing, "utf-8");
+      console.log(pc3.green(`\u2714 Updated AI guardrails in ${options.write}`));
+    } else {
+      fs8.writeFileSync(targetPath, instructions, "utf-8");
+      console.log(pc3.green(`\u2714 Created ${options.write} with AI guardrails`));
+    }
+  } else {
+    console.log(instructions);
+  }
+});
+program.command("hook [action]").description("Install or manage git pre-commit hooks to block non-compliant commits").action((action) => {
+  if (action === "install" || !action) {
+    try {
+      installPreCommitHook(process.cwd());
+      console.log(pc3.bold(pc3.green("\n\u2714 Successfully installed pre-commit hook in .git/hooks/pre-commit!")));
+      console.log(pc3.dim("  Every git commit will now be checked with 'dse check --strict'.\n"));
+    } catch (err) {
+      console.error(pc3.red(`
+\u2716 Could not install hook: ${err.message}
+`));
+    }
+  }
+});
+program.command("init").description("Initialize DSE configuration in current repository").option("-p, --preset <name>", "Preset: berserk | recommended | minimal | python", "berserk").action((options) => {
+  scaffoldConfig(process.cwd(), options.preset);
+});
+program.command("scaffold-tokens").description("Generate official design system tokens TypeScript/CSS file").action(() => {
+  scaffoldTokens(process.cwd());
+});
+program.command("scaffold-primitives").description("Scaffold all canonical zero-compromise design system UI primitives").action(() => {
+  scaffoldAllPrimitives(process.cwd());
 });
 program.command("export-rules").description("Export rules in Markdown format for AI coding assistants (AGENTS.md, .cursorrules, CLAUDE.md)").option("-w, --write <file>", "Write directly to target file (e.g. AGENTS.md)").action(async (options) => {
   const cwd = process.cwd();
   const config = await loadConfig(cwd);
   const rulesMd = generateMarkdownRules(config);
   if (options.write) {
-    const targetFile = path6.resolve(cwd, options.write);
-    if (fs6.existsSync(targetFile)) {
-      let existing = fs6.readFileSync(targetFile, "utf-8");
+    const targetFile = path8.resolve(cwd, options.write);
+    if (fs8.existsSync(targetFile)) {
+      let existing = fs8.readFileSync(targetFile, "utf-8");
       const startTag = "<!-- BEGIN:design-system-enforcer-rules -->";
       const endTag = "<!-- END:design-system-enforcer-rules -->";
       if (existing.includes(startTag) && existing.includes(endTag)) {
@@ -2519,34 +2839,15 @@ program.command("export-rules").description("Export rules in Markdown format for
 ${rulesMd.trim()}
 `;
       }
-      fs6.writeFileSync(targetFile, existing, "utf-8");
-      console.log(pc2.green(`\u2714 Updated rules in ${options.write}`));
+      fs8.writeFileSync(targetFile, existing, "utf-8");
+      console.log(pc3.green(`\u2714 Updated rules in ${options.write}`));
     } else {
-      fs6.writeFileSync(targetFile, rulesMd, "utf-8");
-      console.log(pc2.green(`\u2714 Created ${options.write} with design system rules`));
+      fs8.writeFileSync(targetFile, rulesMd, "utf-8");
+      console.log(pc3.green(`\u2714 Created ${options.write} with design system rules`));
     }
   } else {
     console.log(rulesMd);
   }
-});
-program.command("detect [targetDir]").description("Inspect project architecture, framework, libraries, and design tokens autonomously").action((targetDirArg) => {
-  const cwd = targetDirArg ? path6.resolve(process.cwd(), targetDirArg) : process.cwd();
-  const info = detectProject(cwd);
-  console.log(pc2.bold(pc2.cyan("\n\u{1F50D} DSE Autonomous Project Diagnostics\n")));
-  console.log(`  ${pc2.bold("Target Directory:")}   ${info.root}`);
-  console.log(`  ${pc2.bold("Framework:")}          ${pc2.green(info.framework)}`);
-  console.log(`  ${pc2.bold("Monorepo:")}           ${info.isMonorepo ? pc2.yellow("Yes") : "No"}`);
-  if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
-    console.log(`  ${pc2.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
-  }
-  console.log(`  ${pc2.bold("Libraries:")}          ${info.libraries.length ? pc2.magenta(info.libraries.join(", ")) : "None"}`);
-  console.log(`  ${pc2.bold("Tailwind CSS:")}       ${info.hasTailwind ? pc2.green(info.tailwindVersion || "Yes") : "No"}`);
-  console.log(`  ${pc2.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
-  console.log(`  ${pc2.bold("Tokens File:")}        ${info.tokensFile ? pc2.cyan(info.tokensFile) : pc2.dim("None (using preset defaults)")}`);
-  console.log(`  ${pc2.bold("Default Preset:")}     ${pc2.yellow(info.preset)}`);
-  console.log(`  ${pc2.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
-  console.log(`  ${pc2.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
-  console.log("");
 });
 program.parse(process.argv);
 //# sourceMappingURL=cli.js.map
