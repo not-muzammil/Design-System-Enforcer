@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 "use strict";
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -47,8 +48,8 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 
 // src/config/loader.ts
-var import_node_fs = __toESM(require("fs"), 1);
-var import_node_path = __toESM(require("path"), 1);
+var import_node_fs3 = __toESM(require("fs"), 1);
+var import_node_path3 = __toESM(require("path"), 1);
 var import_node_url = require("url");
 
 // src/config/presets/berserk.ts
@@ -137,6 +138,9 @@ var berserkPreset = {
     disallowRawHtml: {
       button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
       select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true },
+      textarea: { replaceWith: "Textarea", importFrom: "@/components/ui/textarea", checkRawElement: true },
+      progress: { replaceWith: "ProgressBar", importFrom: "@/components/ui/progress", checkRawElement: true },
+      dialog: { replaceWith: "Modal or Dialog", importFrom: "@/components/ui/modal", checkRawElement: true },
       table: { replaceWith: "Table", importFrom: "@/components/ui/table", checkRawElement: true },
       thead: { replaceWith: "TableHeader", importFrom: "@/components/ui/table", checkRawElement: true },
       tbody: { replaceWith: "TableBody", importFrom: "@/components/ui/table", checkRawElement: true },
@@ -188,7 +192,8 @@ var berserkPreset = {
     "table-no-horizontal-stacking": "error",
     "table-windowed-pagination": "error",
     "tabs-component-required": "error",
-    "component-inventory-active": "error"
+    "component-inventory-active": "error",
+    "no-wrapping-compact-elements": "error"
   }
 };
 
@@ -225,7 +230,10 @@ var defaultPreset = {
   components: {
     disallowRawHtml: {
       button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
-      select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true }
+      select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true },
+      textarea: { replaceWith: "Textarea", importFrom: "@/components/ui/textarea", checkRawElement: true },
+      progress: { replaceWith: "ProgressBar", importFrom: "@/components/ui/progress", checkRawElement: true },
+      dialog: { replaceWith: "Modal or Dialog", importFrom: "@/components/ui/modal", checkRawElement: true }
     },
     disallowPseudoChips: true
   },
@@ -236,7 +244,8 @@ var defaultPreset = {
     "no-pseudo-chips": "warn",
     "no-chip-colored-buttons": "error",
     "no-text-arrows": "error",
-    "no-backdrop-blur": "warn"
+    "no-backdrop-blur": "warn",
+    "no-wrapping-compact-elements": "warn"
   }
 };
 
@@ -300,6 +309,221 @@ var pythonPreset = {
   }
 };
 
+// src/detector/index.ts
+var import_node_fs2 = __toESM(require("fs"), 1);
+var import_node_path2 = __toESM(require("path"), 1);
+
+// src/detector/ignores.ts
+var import_node_fs = __toESM(require("fs"), 1);
+var import_node_path = __toESM(require("path"), 1);
+var DEFAULT_IGNORES = [
+  "**/node_modules/**",
+  "**/.next/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/out/**",
+  "**/.turbo/**",
+  "**/.git/**",
+  "**/coverage/**",
+  "**/.venv/**",
+  "**/venv/**",
+  "**/env/**",
+  "**/__pycache__/**",
+  "**/.pytest_cache/**",
+  "**/*.pyc",
+  // Non-UI code
+  "**/api/**",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/__tests__/**",
+  "**/*.stories.*",
+  "**/generated/**"
+];
+function getSmartIgnores(cwd) {
+  const result = new Set(DEFAULT_IGNORES);
+  const gitignorePath = import_node_path.default.resolve(cwd, ".gitignore");
+  if (import_node_fs.default.existsSync(gitignorePath)) {
+    try {
+      const content = import_node_fs.default.readFileSync(gitignorePath, "utf-8");
+      const lines = content.split(/\r?\n/);
+      for (let line of lines) {
+        line = line.trim();
+        if (!line || line.startsWith("#")) continue;
+        if (line.startsWith("/")) {
+          line = line.substring(1);
+        }
+        if (line.endsWith("/")) {
+          line = line.slice(0, -1);
+        }
+        if (line) {
+          result.add(`**/${line}/**`);
+          result.add(`**/${line}`);
+        }
+      }
+    } catch {
+    }
+  }
+  return Array.from(result);
+}
+
+// src/detector/index.ts
+function safeReadJson(filePath) {
+  try {
+    if (import_node_fs2.default.existsSync(filePath)) {
+      const raw = import_node_fs2.default.readFileSync(filePath, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch {
+  }
+  return null;
+}
+function detectProject(cwd = process.cwd()) {
+  const pkg = safeReadJson(import_node_path2.default.resolve(cwd, "package.json"));
+  const deps = { ...pkg?.dependencies || {}, ...pkg?.devDependencies || {} };
+  const hasRequirements = import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "requirements.txt"));
+  const hasPyproject = import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "pyproject.toml"));
+  const hasPython = hasRequirements || hasPyproject || import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "setup.py"));
+  let isStreamlit = false;
+  if (hasPython) {
+    if (hasRequirements) {
+      try {
+        const reqContent = import_node_fs2.default.readFileSync(import_node_path2.default.resolve(cwd, "requirements.txt"), "utf-8");
+        if (reqContent.toLowerCase().includes("streamlit")) {
+          isStreamlit = true;
+        }
+      } catch {
+      }
+    }
+  }
+  const isPnpmMonorepo = import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "pnpm-workspace.yaml"));
+  const isTurbo = import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "turbo.json"));
+  let monorepoWorkspaces = [];
+  if (Array.isArray(pkg?.workspaces)) {
+    monorepoWorkspaces = pkg.workspaces;
+  } else if (pkg?.workspaces?.packages) {
+    monorepoWorkspaces = pkg.workspaces.packages;
+  }
+  const isMonorepo = isPnpmMonorepo || isTurbo || monorepoWorkspaces.length > 0;
+  let framework = "unknown";
+  if (deps["next"]) {
+    framework = "nextjs";
+  } else if (deps["vite"]) {
+    framework = "vite";
+  } else if (deps["@remix-run/react"]) {
+    framework = "remix";
+  } else if (deps["astro"]) {
+    framework = "astro";
+  } else if (deps["react-scripts"]) {
+    framework = "react-cra";
+  } else if (isStreamlit) {
+    framework = "streamlit";
+  } else if (hasPython) {
+    framework = "python-general";
+  }
+  const libraries = [];
+  const hasShadcnConfig = import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "components.json"));
+  if (hasShadcnConfig || deps["@radix-ui/react-slot"]) {
+    libraries.push("shadcn");
+  }
+  if (Object.keys(deps).some((d) => d.startsWith("@radix-ui/"))) {
+    if (!libraries.includes("shadcn")) libraries.push("radix");
+  }
+  if (deps["tailwindcss"]) {
+    libraries.push("tailwind");
+  }
+  if (deps["lucide-react"] || deps["lucide"]) {
+    libraries.push("lucide");
+  }
+  if (deps["@mui/material"] || deps["@material-ui/core"]) {
+    libraries.push("mui");
+  }
+  if (deps["@chakra-ui/react"]) {
+    libraries.push("chakra");
+  }
+  const hasTailwind = Boolean(deps["tailwindcss"] || import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "tailwind.config.js")) || import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "tailwind.config.ts")));
+  let tailwindVersion;
+  if (hasTailwind) {
+    const rawVersion = deps["tailwindcss"] || "";
+    if (rawVersion.includes("^4") || rawVersion.includes("~4") || rawVersion.startsWith("4")) {
+      tailwindVersion = "v4";
+    } else {
+      tailwindVersion = "v3";
+    }
+  }
+  const hasTypeScript = Boolean(deps["typescript"] || import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "tsconfig.json")));
+  const suggestedIncludes = [];
+  const extGroup = hasTypeScript ? "{tsx,jsx,ts,js}" : "{jsx,js}";
+  const candidateDirs = [
+    "frontend/src",
+    "frontend",
+    "apps/web/src",
+    "apps/web",
+    "client/src",
+    "client",
+    "src",
+    "app",
+    "pages",
+    "components"
+  ];
+  let foundUiDir = false;
+  for (const dir of candidateDirs) {
+    if (import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, dir))) {
+      if (dir === "frontend" && import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "frontend/src"))) continue;
+      if (dir === "client" && import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "client/src"))) continue;
+      if (dir === "apps/web" && import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, "apps/web/src"))) continue;
+      suggestedIncludes.push(`${dir}/**/*.${extGroup}`);
+      foundUiDir = true;
+      break;
+    }
+  }
+  if (hasPython) {
+    suggestedIncludes.push("**/*.py");
+  } else if (!foundUiDir) {
+    suggestedIncludes.push(`**/*.${extGroup}`);
+  }
+  const suggestedIgnores = getSmartIgnores(cwd);
+  if (hasShadcnConfig || libraries.includes("shadcn")) {
+    suggestedIgnores.push("**/components/ui/**");
+  }
+  const tokenCandidates = [
+    "frontend/src/lib/tokens.ts",
+    "frontend/src/tokens.ts",
+    "src/lib/tokens.ts",
+    "src/tokens.ts",
+    "src/design/tokens.ts",
+    "styles/tokens.css",
+    "src/app/globals.css",
+    "frontend/src/index.css",
+    "src/index.css"
+  ];
+  let tokensFile;
+  for (const candidate of tokenCandidates) {
+    if (import_node_fs2.default.existsSync(import_node_path2.default.resolve(cwd, candidate))) {
+      tokensFile = candidate;
+      break;
+    }
+  }
+  let preset = "berserk";
+  if (framework === "streamlit" || framework === "python-general") {
+    preset = "python";
+  }
+  return {
+    root: cwd,
+    isMonorepo,
+    monorepoWorkspaces,
+    framework,
+    libraries,
+    hasTailwind,
+    tailwindVersion,
+    hasTypeScript,
+    hasPython,
+    suggestedIncludes,
+    suggestedIgnores,
+    tokensFile,
+    preset
+  };
+}
+
 // src/config/loader.ts
 var CONFIG_FILES = [
   "dse.config.js",
@@ -314,17 +538,18 @@ function defineConfig(config) {
   return config;
 }
 async function loadConfig(cwd = process.cwd(), customPath) {
+  const detected = detectProject(cwd);
   let userConfig = {};
   let foundConfigPath = null;
   if (customPath) {
-    const resolved = import_node_path.default.resolve(cwd, customPath);
-    if (import_node_fs.default.existsSync(resolved)) {
+    const resolved = import_node_path3.default.resolve(cwd, customPath);
+    if (import_node_fs3.default.existsSync(resolved)) {
       foundConfigPath = resolved;
     }
   } else {
     for (const filename of CONFIG_FILES) {
-      const candidate = import_node_path.default.resolve(cwd, filename);
-      if (import_node_fs.default.existsSync(candidate)) {
+      const candidate = import_node_path3.default.resolve(cwd, filename);
+      if (import_node_fs3.default.existsSync(candidate)) {
         foundConfigPath = candidate;
         break;
       }
@@ -332,7 +557,7 @@ async function loadConfig(cwd = process.cwd(), customPath) {
   }
   if (foundConfigPath) {
     if (foundConfigPath.endsWith(".json") || foundConfigPath.endsWith(".dserc")) {
-      const content = import_node_fs.default.readFileSync(foundConfigPath, "utf-8");
+      const content = import_node_fs3.default.readFileSync(foundConfigPath, "utf-8");
       try {
         userConfig = JSON.parse(content);
       } catch (err) {
@@ -345,7 +570,7 @@ async function loadConfig(cwd = process.cwd(), customPath) {
         userConfig = mod.default || mod;
       } catch {
         try {
-          const content = import_node_fs.default.readFileSync(foundConfigPath, "utf-8");
+          const content = import_node_fs3.default.readFileSync(foundConfigPath, "utf-8");
           const cjsReq = createCjsEvaluator(foundConfigPath, content);
           userConfig = cjsReq;
         } catch (innerErr) {
@@ -354,18 +579,19 @@ async function loadConfig(cwd = process.cwd(), customPath) {
       }
     }
   }
-  let presetName = userConfig.preset;
-  if (!presetName) {
-    const isPython = import_node_fs.default.existsSync(import_node_path.default.resolve(cwd, "requirements.txt")) || import_node_fs.default.existsSync(import_node_path.default.resolve(cwd, "pyproject.toml")) || import_node_fs.default.existsSync(import_node_path.default.resolve(cwd, ".streamlit")) || import_node_fs.default.existsSync(import_node_path.default.resolve(cwd, "manage.py"));
-    presetName = isPython ? "python" : "berserk";
-  }
+  let presetName = userConfig.preset || detected.preset;
   let basePreset = berserkPreset;
   if (presetName === "python") {
     basePreset = pythonPreset;
   } else if (presetName === "recommended") {
     basePreset = defaultPreset;
   }
-  return mergeConfigs(basePreset, userConfig);
+  const autonomousDefaults = {
+    include: detected.suggestedIncludes,
+    exclude: detected.suggestedIgnores
+  };
+  const withAutonomous = mergeConfigs(basePreset, autonomousDefaults);
+  return mergeConfigs(withAutonomous, userConfig);
 }
 function createCjsEvaluator(filePath, content) {
   if (content.includes("export default")) {
@@ -415,8 +641,8 @@ function mergeConfigs(base, overrides) {
 }
 
 // src/rules/runner.ts
-var import_node_fs2 = __toESM(require("fs"), 1);
-var import_node_path2 = __toESM(require("path"), 1);
+var import_node_fs4 = __toESM(require("fs"), 1);
+var import_node_path4 = __toESM(require("path"), 1);
 var import_fast_glob = __toESM(require("fast-glob"), 1);
 
 // src/parser/ast.ts
@@ -829,16 +1055,52 @@ function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, 
         pos.line,
         pos.col,
         "no-raw-html-elements",
-        `Raw browser default '<input type="checkbox">' detected. Use standard design system '<Checkbox>' or '<Toggle>'.`,
+        `Raw browser default '<input type="checkbox">' detected. Never use unstyled browser checkboxes. Use standard design system '<Checkbox>' or '<Toggle>'.`,
         lineSnippet
       );
-    } else if (["text", "email", "search"].includes(typeVal)) {
+    } else if (typeVal === "radio") {
       addViolation(
         filePath,
         pos.line,
         pos.col,
         "no-raw-html-elements",
-        `Raw '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
+        `Raw browser default '<input type="radio">' detected. Never use unstyled browser radio buttons. Use standard design system '<RadioGroup>' or styled toggle.`,
+        lineSnippet
+      );
+    } else if (typeVal === "range") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="range">' detected. Never use unstyled browser sliders. Use standard design system '<Slider>'.`,
+        lineSnippet
+      );
+    } else if (typeVal === "file") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="file">' detected. Never display native unstyled file picker inputs. Use a custom styled dropzone or trigger.`,
+        lineSnippet
+      );
+    } else if (typeVal === "color") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="color">' detected. Never use native browser color pickers. Use a custom color picker component.`,
+        lineSnippet
+      );
+    } else if (["text", "email", "search", "password", "number", "tel", "url"].includes(typeVal)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
         lineSnippet
       );
     }
@@ -1096,6 +1358,9 @@ function checkPseudoChips(tagName, attributes, pos, filePath, addViolation, line
 function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config) {
   if (!attributes.className) return;
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
+  const isChip = ["Chip", "Badge", "Tag", "StatusBadge"].includes(tagName);
+  const isTab = ["Tab", "TabTrigger", "TabsTrigger"].includes(tagName);
+  const isCompactElement = isButton || isChip || isTab;
   const isCheckbox = tagName === "Checkbox" || attributes.type?.initializer?.getText(sourceFile)?.includes("checkbox") || attributes.role?.initializer?.getText(sourceFile)?.includes("checkbox") || Boolean(attributes["aria-checked"]) || attributes.className && /\b(?:size-5|w-5\s+h-5)\b/.test(attributes.className.rawText);
   const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
   const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
@@ -1135,8 +1400,33 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
           );
         }
       }
+      if (isCompactElement && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+        if (dec.core === "flex-wrap" || dec.core === "whitespace-normal" || dec.core === "whitespace-pre-wrap") {
+          addViolation(
+            filePath,
+            nodePos.line,
+            nodePos.col,
+            "no-wrapping-compact-elements",
+            `Disallowed text wrapping class '${dec.core}' on <${tagName}>. Compact interactive elements (buttons, chips, badges, tabs) must never wrap text across multiple lines.`,
+            lineSnippet
+          );
+        }
+      }
     });
   });
+  if (tagName === "TableHead" && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+    const rawClass = attributes.className?.rawText || "";
+    if (/\b(?:flex-wrap|whitespace-normal|whitespace-pre-wrap)\b/.test(rawClass)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-wrapping-compact-elements",
+        `Disallowed text wrapping on <TableHead>. Column headers must remain single-line ('whitespace-nowrap') to preserve table column alignment.`,
+        lineSnippet
+      );
+    }
+  }
 }
 
 // src/rules/regex-rules.ts
@@ -1357,8 +1647,8 @@ function runPythonRules(content, filePath, addViolation, config) {
 
 // src/rules/runner.ts
 async function runDseScan(config, cwd = process.cwd()) {
-  let targetDir = import_node_path2.default.resolve(cwd, config.targetDir || "src");
-  if (!import_node_fs2.default.existsSync(targetDir)) {
+  let targetDir = import_node_path4.default.resolve(cwd, config.targetDir || "src");
+  if (!import_node_fs4.default.existsSync(targetDir)) {
     targetDir = cwd;
   }
   const includePatterns = config.include || ["**/*.{tsx,jsx,ts,js}"];
@@ -1390,7 +1680,7 @@ async function runDseScan(config, cwd = process.cwd()) {
   const violations = [];
   const seenViolationKeys = /* @__PURE__ */ new Set();
   const addViolation = (file, line, col, rule, message, snippet) => {
-    const normFile = import_node_path2.default.relative(cwd, file).replace(/\\/g, "/");
+    const normFile = import_node_path4.default.relative(cwd, file).replace(/\\/g, "/");
     const key = `${normFile}:${line}:${rule}`;
     if (seenViolationKeys.has(key)) return;
     seenViolationKeys.add(key);
@@ -1408,7 +1698,7 @@ async function runDseScan(config, cwd = process.cwd()) {
   };
   let scannedJsxFiles = false;
   for (const filePath of files) {
-    const content = import_node_fs2.default.readFileSync(filePath, "utf-8");
+    const content = import_node_fs4.default.readFileSync(filePath, "utf-8");
     const isJsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx") || filePath.endsWith(".ts") || filePath.endsWith(".js");
     const isPythonOrTemplate = filePath.endsWith(".py") || filePath.endsWith(".html") || filePath.endsWith(".jinja") || filePath.endsWith(".jinja2") || filePath.endsWith(".css");
     if (isJsx) {
@@ -1529,8 +1819,8 @@ function formatJson(result) {
 }
 
 // src/scaffold/index.ts
-var import_node_fs3 = __toESM(require("fs"), 1);
-var import_node_path3 = __toESM(require("path"), 1);
+var import_node_fs5 = __toESM(require("fs"), 1);
+var import_node_path5 = __toESM(require("path"), 1);
 
 // src/scaffold/templates/tokens.ts
 var tokensTemplate = `/**
@@ -1673,7 +1963,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = "", variant = "primary", size = "default", children, ...props }, ref) => {
     // Standard 36px height, 8px radius, font-medium, strictly neutral palette
     const baseClasses =
-      "inline-flex items-center justify-center font-medium text-sm rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none";
+      "inline-flex items-center justify-center font-medium text-sm rounded-md whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none cursor-pointer";
+
 
     const variantClasses = {
       primary: "bg-neutral-900 text-white hover:bg-neutral-800 shadow-2xs",
@@ -1714,7 +2005,8 @@ export const Chip: React.FC<ChipProps> = ({
 }) => {
   // Standard 36px height, 8px radius, 14px typography
   const baseClasses =
-    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium gap-1.5 select-none";
+    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium whitespace-nowrap shrink-0 gap-1.5 select-none";
+
 
   const variantClasses = {
     neutral: "bg-neutral-100 text-neutral-800 border border-neutral-200",
@@ -1884,12 +2176,12 @@ export const TableHead = React.forwardRef<HTMLTableCellElement, TableHeadProps>(
   ({ className = "", icon, resizable = true, children, ...props }, ref) => (
     <th
       ref={ref}
-      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative \${className}\`}
+      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative whitespace-nowrap \${className}\`}
       {...props}
     >
       <div className="flex items-center gap-2">
         {icon && <span className="text-neutral-500 shrink-0">{icon}</span>}
-        <span>{children}</span>
+        <span className="whitespace-nowrap">{children}</span>
       </div>
     </th>
   )
@@ -1935,7 +2227,7 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange, className
             type="button"
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
-            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-all select-none \${
+            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium whitespace-nowrap shrink-0 transition-all select-none \${
               isActive
                 ? "bg-white text-neutral-900 shadow-2xs"
                 : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"
@@ -2027,8 +2319,8 @@ var COMPONENT_TEMPLATES = {
 };
 function scaffoldConfig(cwd = process.cwd(), preset = "berserk") {
   if (preset === "python") {
-    const jsonPath = import_node_path3.default.resolve(cwd, "dse.config.json");
-    if (import_node_fs3.default.existsSync(jsonPath)) return jsonPath;
+    const jsonPath = import_node_path5.default.resolve(cwd, "dse.config.json");
+    if (import_node_fs5.default.existsSync(jsonPath)) return jsonPath;
     const content2 = JSON.stringify(
       {
         preset: "python",
@@ -2045,11 +2337,11 @@ function scaffoldConfig(cwd = process.cwd(), preset = "berserk") {
       null,
       2
     ) + "\n";
-    import_node_fs3.default.writeFileSync(jsonPath, content2, "utf-8");
+    import_node_fs5.default.writeFileSync(jsonPath, content2, "utf-8");
     return jsonPath;
   }
-  const configPath = import_node_path3.default.resolve(cwd, "dse.config.js");
-  if (import_node_fs3.default.existsSync(configPath)) {
+  const configPath = import_node_path5.default.resolve(cwd, "dse.config.js");
+  if (import_node_fs5.default.existsSync(configPath)) {
     return configPath;
   }
   const content = `import { defineConfig } from "design-system-enforcer";
@@ -2077,21 +2369,21 @@ export default defineConfig({
   ],
 });
 `;
-  import_node_fs3.default.writeFileSync(configPath, content, "utf-8");
+  import_node_fs5.default.writeFileSync(configPath, content, "utf-8");
   return configPath;
 }
 function scaffoldTokens(cwd = process.cwd()) {
-  const libDir = import_node_path3.default.resolve(cwd, "src/lib");
-  const appDir = import_node_path3.default.resolve(cwd, "src/app");
-  if (!import_node_fs3.default.existsSync(libDir)) import_node_fs3.default.mkdirSync(libDir, { recursive: true });
-  if (!import_node_fs3.default.existsSync(appDir)) import_node_fs3.default.mkdirSync(appDir, { recursive: true });
-  const tokensPath = import_node_path3.default.join(libDir, "tokens.ts");
-  if (!import_node_fs3.default.existsSync(tokensPath)) {
-    import_node_fs3.default.writeFileSync(tokensPath, tokensTemplate, "utf-8");
+  const libDir = import_node_path5.default.resolve(cwd, "src/lib");
+  const appDir = import_node_path5.default.resolve(cwd, "src/app");
+  if (!import_node_fs5.default.existsSync(libDir)) import_node_fs5.default.mkdirSync(libDir, { recursive: true });
+  if (!import_node_fs5.default.existsSync(appDir)) import_node_fs5.default.mkdirSync(appDir, { recursive: true });
+  const tokensPath = import_node_path5.default.join(libDir, "tokens.ts");
+  if (!import_node_fs5.default.existsSync(tokensPath)) {
+    import_node_fs5.default.writeFileSync(tokensPath, tokensTemplate, "utf-8");
   }
-  const cssPath = import_node_path3.default.join(appDir, "globals.css");
-  if (!import_node_fs3.default.existsSync(cssPath)) {
-    import_node_fs3.default.writeFileSync(cssPath, cssTemplate, "utf-8");
+  const cssPath = import_node_path5.default.join(appDir, "globals.css");
+  if (!import_node_fs5.default.existsSync(cssPath)) {
+    import_node_fs5.default.writeFileSync(cssPath, cssTemplate, "utf-8");
   }
   return { tokensPath, cssPath };
 }
@@ -2101,13 +2393,13 @@ function scaffoldComponent(componentName, cwd = process.cwd()) {
   if (!template) {
     return null;
   }
-  const uiDir = import_node_path3.default.resolve(cwd, "src/components/ui");
-  if (!import_node_fs3.default.existsSync(uiDir)) {
-    import_node_fs3.default.mkdirSync(uiDir, { recursive: true });
+  const uiDir = import_node_path5.default.resolve(cwd, "src/components/ui");
+  if (!import_node_fs5.default.existsSync(uiDir)) {
+    import_node_fs5.default.mkdirSync(uiDir, { recursive: true });
   }
-  const targetPath = import_node_path3.default.join(uiDir, template.filename);
-  if (!import_node_fs3.default.existsSync(targetPath)) {
-    import_node_fs3.default.writeFileSync(targetPath, template.content, "utf-8");
+  const targetPath = import_node_path5.default.join(uiDir, template.filename);
+  if (!import_node_fs5.default.existsSync(targetPath)) {
+    import_node_fs5.default.writeFileSync(targetPath, template.content, "utf-8");
   }
   return targetPath;
 }

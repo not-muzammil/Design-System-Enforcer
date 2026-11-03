@@ -33,6 +33,9 @@ export const defaultPreset: DseConfig = {
     disallowRawHtml: {
       button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
       select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true },
+      textarea: { replaceWith: "Textarea", importFrom: "@/components/ui/textarea", checkRawElement: true },
+      progress: { replaceWith: "ProgressBar", importFrom: "@/components/ui/progress", checkRawElement: true },
+      dialog: { replaceWith: "Modal or Dialog", importFrom: "@/components/ui/modal", checkRawElement: true },
     },
     disallowPseudoChips: true,
   },
@@ -44,6 +47,7 @@ export const defaultPreset: DseConfig = {
     "no-chip-colored-buttons": "error",
     "no-text-arrows": "error",
     "no-backdrop-blur": "warn",
+    "no-wrapping-compact-elements": "warn",
   },
 };
 

@@ -54,5 +54,63 @@ describe("DSE Rules Enforcement", () => {
 
     expect(violations.some((v) => v.rule === "no-backdrop-blur")).toBe(true);
   });
+
+  it("flags text wrapping on compact elements like Button, Chip, and TableHead", () => {
+    const code = `
+      export const View = () => (
+        <div>
+          <Button className="whitespace-normal">Click me</Button>
+          <Chip className="flex-wrap">Status</Chip>
+          <TableHead className="whitespace-normal">Header</TableHead>
+        </div>
+      );
+    `;
+    const sourceFile = parseTsx("test.tsx", code);
+    const violations: any[] = [];
+
+    runAstRules(
+      sourceFile,
+      "test.tsx",
+      (file, line, col, rule, message, snippet) => {
+        violations.push({ rule, message });
+      },
+      {},
+      berserkPreset
+    );
+
+    const wrapViolations = violations.filter((v) => v.rule === "no-wrapping-compact-elements");
+    expect(wrapViolations.length).toBe(3);
+  });
+
+  it("bans raw default browser form and control elements", () => {
+    const code = `
+      export const BadForm = () => (
+        <form>
+          <input type="radio" name="plan" />
+          <input type="range" min="0" max="100" />
+          <textarea placeholder="Write..." />
+          <select><option>Option 1</option></select>
+          <progress value="50" max="100" />
+        </form>
+      );
+    `;
+    const sourceFile = parseTsx("test.tsx", code);
+    const violations: any[] = [];
+
+    runAstRules(
+      sourceFile,
+      "test.tsx",
+      (file, line, col, rule, message, snippet) => {
+        violations.push({ rule, message });
+      },
+      {},
+      berserkPreset
+    );
+
+    const rawViolations = violations.filter((v) => v.rule === "no-raw-html-elements");
+    expect(rawViolations.length).toBe(5);
+  });
 });
+
+
 

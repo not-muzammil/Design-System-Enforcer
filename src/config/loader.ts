@@ -5,6 +5,7 @@ import type { DseConfig } from "./types.js";
 import { berserkPreset } from "./presets/berserk.js";
 import { defaultPreset } from "./presets/default.js";
 import { pythonPreset } from "./presets/python.js";
+import { detectProject } from "../detector/index.js";
 
 const CONFIG_FILES = [
   "dse.config.js",
@@ -21,8 +22,10 @@ export function defineConfig(config: DseConfig): DseConfig {
 }
 
 export async function loadConfig(cwd = process.cwd(), customPath?: string): Promise<DseConfig> {
+  const detected = detectProject(cwd);
   let userConfig: Partial<DseConfig> = {};
   let foundConfigPath: string | null = null;
+
 
   if (customPath) {
     const resolved = path.resolve(cwd, customPath);
@@ -67,15 +70,7 @@ export async function loadConfig(cwd = process.cwd(), customPath?: string): Prom
   }
 
   // Determine base preset (auto-detect python if requirements.txt / pyproject.toml present)
-  let presetName = userConfig.preset;
-  if (!presetName) {
-    const isPython =
-      fs.existsSync(path.resolve(cwd, "requirements.txt")) ||
-      fs.existsSync(path.resolve(cwd, "pyproject.toml")) ||
-      fs.existsSync(path.resolve(cwd, ".streamlit")) ||
-      fs.existsSync(path.resolve(cwd, "manage.py"));
-    presetName = isPython ? "python" : "berserk";
-  }
+  let presetName = userConfig.preset || detected.preset;
 
   let basePreset = berserkPreset;
   if (presetName === "python") {
@@ -84,7 +79,14 @@ export async function loadConfig(cwd = process.cwd(), customPath?: string): Prom
     basePreset = defaultPreset;
   }
 
-  return mergeConfigs(basePreset, userConfig);
+  // Merge detected autonomous defaults (include globs, smart ignores)
+  const autonomousDefaults: Partial<DseConfig> = {
+    include: detected.suggestedIncludes,
+    exclude: detected.suggestedIgnores,
+  };
+
+  const withAutonomous = mergeConfigs(basePreset, autonomousDefaults);
+  return mergeConfigs(withAutonomous, userConfig);
 }
 
 function createCjsEvaluator(filePath: string, content: string): any {

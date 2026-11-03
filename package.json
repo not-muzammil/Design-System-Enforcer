@@ -1,6 +1,6 @@
 {
   "name": "design-system-enforcer",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Zero-compromise Design System Enforcer (DSE) CLI & AST Linter for React/Next.js projects. Enforces typography, geometry, component invariants, colors, and layout rules.",
   "keywords": [
     "design-system",
@@ -17,7 +17,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/not-muzammil/Design-System-Enforcer.git"
+    "url": "git+https://github.com/not-muzammil/Design-System-Enforcer.git"
   },
   "homepage": "https://github.com/not-muzammil/Design-System-Enforcer#readme",
   "bugs": {
@@ -40,11 +40,10 @@
     }
   },
   "bin": {
-    "dse": "./bin/dse.js",
-    "design-system-enforcer": "./bin/dse.js"
+    "dse": "dist/cli.js",
+    "design-system-enforcer": "dist/cli.js"
   },
   "files": [
-    "bin",
     "dist"
   ],
   "scripts": {

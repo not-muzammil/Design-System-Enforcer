@@ -175,20 +175,57 @@ function checkRawHtmlElements(
         pos.line,
         pos.col,
         "no-raw-html-elements",
-        `Raw browser default '<input type="checkbox">' detected. Use standard design system '<Checkbox>' or '<Toggle>'.`,
+        `Raw browser default '<input type="checkbox">' detected. Never use unstyled browser checkboxes. Use standard design system '<Checkbox>' or '<Toggle>'.`,
         lineSnippet
       );
-    } else if (["text", "email", "search"].includes(typeVal)) {
+    } else if (typeVal === "radio") {
       addViolation(
         filePath,
         pos.line,
         pos.col,
         "no-raw-html-elements",
-        `Raw '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
+        `Raw browser default '<input type="radio">' detected. Never use unstyled browser radio buttons. Use standard design system '<RadioGroup>' or styled toggle.`,
+        lineSnippet
+      );
+    } else if (typeVal === "range") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="range">' detected. Never use unstyled browser sliders. Use standard design system '<Slider>'.`,
+        lineSnippet
+      );
+    } else if (typeVal === "file") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="file">' detected. Never display native unstyled file picker inputs. Use a custom styled dropzone or trigger.`,
+        lineSnippet
+      );
+    } else if (typeVal === "color") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="color">' detected. Never use native browser color pickers. Use a custom color picker component.`,
+        lineSnippet
+      );
+    } else if (["text", "email", "search", "password", "number", "tel", "url"].includes(typeVal)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
         lineSnippet
       );
     }
   }
+
 }
 
 function checkButtonInvariants(
@@ -562,7 +599,12 @@ function checkElementClasses(
   if (!attributes.className) return;
 
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
+  const isChip = ["Chip", "Badge", "Tag", "StatusBadge"].includes(tagName);
+  const isTab = ["Tab", "TabTrigger", "TabsTrigger"].includes(tagName);
+  const isCompactElement = isButton || isChip || isTab;
+
   const isCheckbox =
+
     tagName === "Checkbox" ||
     attributes.type?.initializer?.getText(sourceFile)?.includes("checkbox") ||
     attributes.role?.initializer?.getText(sourceFile)?.includes("checkbox") ||
@@ -617,6 +659,35 @@ function checkElementClasses(
           );
         }
       }
+
+      // Disallow multi-line text wrapping on compact controls (Buttons, Chips, Badges, Tabs)
+      if (isCompactElement && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+        if (dec.core === "flex-wrap" || dec.core === "whitespace-normal" || dec.core === "whitespace-pre-wrap") {
+          addViolation(
+            filePath,
+            nodePos.line,
+            nodePos.col,
+            "no-wrapping-compact-elements",
+            `Disallowed text wrapping class '${dec.core}' on <${tagName}>. Compact interactive elements (buttons, chips, badges, tabs) must never wrap text across multiple lines.`,
+            lineSnippet
+          );
+        }
+      }
     });
   });
+
+  // TableHead wrap check
+  if (tagName === "TableHead" && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+    const rawClass = attributes.className?.rawText || "";
+    if (/\b(?:flex-wrap|whitespace-normal|whitespace-pre-wrap)\b/.test(rawClass)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-wrapping-compact-elements",
+        `Disallowed text wrapping on <TableHead>. Column headers must remain single-line ('whitespace-nowrap') to preserve table column alignment.`,
+        lineSnippet
+      );
+    }
+  }
 }

@@ -72,6 +72,9 @@ export const berserkPreset: DseConfig = {
     disallowRawHtml: {
       button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
       select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true },
+      textarea: { replaceWith: "Textarea", importFrom: "@/components/ui/textarea", checkRawElement: true },
+      progress: { replaceWith: "ProgressBar", importFrom: "@/components/ui/progress", checkRawElement: true },
+      dialog: { replaceWith: "Modal or Dialog", importFrom: "@/components/ui/modal", checkRawElement: true },
       table: { replaceWith: "Table", importFrom: "@/components/ui/table", checkRawElement: true },
       thead: { replaceWith: "TableHeader", importFrom: "@/components/ui/table", checkRawElement: true },
       tbody: { replaceWith: "TableBody", importFrom: "@/components/ui/table", checkRawElement: true },
@@ -124,6 +127,7 @@ export const berserkPreset: DseConfig = {
     "table-windowed-pagination": "error",
     "tabs-component-required": "error",
     "component-inventory-active": "error",
+    "no-wrapping-compact-elements": "error",
   },
 };
 

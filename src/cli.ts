@@ -14,6 +14,8 @@ import {
   COMPONENT_TEMPLATES,
 } from "./scaffold/index.js";
 import { generateMarkdownRules } from "./export-rules/index.js";
+import { detectProject } from "./detector/index.js";
+
 
 const program = new Command();
 
@@ -186,5 +188,33 @@ program
     }
   });
 
+// ---------------------------------------------------------------------------
+// COMMAND: detect (autonomous diagnostics)
+// ---------------------------------------------------------------------------
+program
+  .command("detect [targetDir]")
+  .description("Inspect project architecture, framework, libraries, and design tokens autonomously")
+  .action((targetDirArg) => {
+    const cwd = targetDirArg ? path.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const info = detectProject(cwd);
+
+    console.log(pc.bold(pc.cyan("\n🔍 DSE Autonomous Project Diagnostics\n")));
+    console.log(`  ${pc.bold("Target Directory:")}   ${info.root}`);
+    console.log(`  ${pc.bold("Framework:")}          ${pc.green(info.framework)}`);
+    console.log(`  ${pc.bold("Monorepo:")}           ${info.isMonorepo ? pc.yellow("Yes") : "No"}`);
+    if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
+      console.log(`  ${pc.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
+    }
+    console.log(`  ${pc.bold("Libraries:")}          ${info.libraries.length ? pc.magenta(info.libraries.join(", ")) : "None"}`);
+    console.log(`  ${pc.bold("Tailwind CSS:")}       ${info.hasTailwind ? pc.green(info.tailwindVersion || "Yes") : "No"}`);
+    console.log(`  ${pc.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
+    console.log(`  ${pc.bold("Tokens File:")}        ${info.tokensFile ? pc.cyan(info.tokensFile) : pc.dim("None (using preset defaults)")}`);
+    console.log(`  ${pc.bold("Default Preset:")}     ${pc.yellow(info.preset)}`);
+    console.log(`  ${pc.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
+    console.log(`  ${pc.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
+    console.log("");
+  });
+
 program.parse(process.argv);
+
 

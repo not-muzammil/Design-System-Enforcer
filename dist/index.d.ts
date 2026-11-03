@@ -60,6 +60,7 @@ interface RulesConfig {
     "table-windowed-pagination"?: RuleSeverity;
     "tabs-component-required"?: RuleSeverity;
     "component-inventory-active"?: RuleSeverity;
+    "no-wrapping-compact-elements"?: RuleSeverity;
 }
 interface DseConfig {
     preset?: "berserk" | "recommended" | "minimal" | "python";

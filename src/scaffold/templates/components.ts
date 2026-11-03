@@ -10,7 +10,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = "", variant = "primary", size = "default", children, ...props }, ref) => {
     // Standard 36px height, 8px radius, font-medium, strictly neutral palette
     const baseClasses =
-      "inline-flex items-center justify-center font-medium text-sm rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none";
+      "inline-flex items-center justify-center font-medium text-sm rounded-md whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none cursor-pointer";
+
 
     const variantClasses = {
       primary: "bg-neutral-900 text-white hover:bg-neutral-800 shadow-2xs",
@@ -52,7 +53,8 @@ export const Chip: React.FC<ChipProps> = ({
 }) => {
   // Standard 36px height, 8px radius, 14px typography
   const baseClasses =
-    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium gap-1.5 select-none";
+    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium whitespace-nowrap shrink-0 gap-1.5 select-none";
+
 
   const variantClasses = {
     neutral: "bg-neutral-100 text-neutral-800 border border-neutral-200",
@@ -225,12 +227,12 @@ export const TableHead = React.forwardRef<HTMLTableCellElement, TableHeadProps>(
   ({ className = "", icon, resizable = true, children, ...props }, ref) => (
     <th
       ref={ref}
-      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative \${className}\`}
+      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative whitespace-nowrap \${className}\`}
       {...props}
     >
       <div className="flex items-center gap-2">
         {icon && <span className="text-neutral-500 shrink-0">{icon}</span>}
-        <span>{children}</span>
+        <span className="whitespace-nowrap">{children}</span>
       </div>
     </th>
   )
@@ -277,7 +279,7 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange, className
             type="button"
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
-            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-all select-none \${
+            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium whitespace-nowrap shrink-0 transition-all select-none \${
               isActive
                 ? "bg-white text-neutral-900 shadow-2xs"
                 : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"

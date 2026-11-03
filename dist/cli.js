@@ -1,12 +1,14 @@
+#!/usr/bin/env node
+
 // src/cli.ts
-import fs4 from "fs";
-import path4 from "path";
+import fs6 from "fs";
+import path6 from "path";
 import { Command } from "commander";
 import pc2 from "picocolors";
 
 // src/config/loader.ts
-import fs from "fs";
-import path from "path";
+import fs3 from "fs";
+import path3 from "path";
 import { pathToFileURL } from "url";
 
 // src/config/presets/berserk.ts
@@ -95,6 +97,9 @@ var berserkPreset = {
     disallowRawHtml: {
       button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
       select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true },
+      textarea: { replaceWith: "Textarea", importFrom: "@/components/ui/textarea", checkRawElement: true },
+      progress: { replaceWith: "ProgressBar", importFrom: "@/components/ui/progress", checkRawElement: true },
+      dialog: { replaceWith: "Modal or Dialog", importFrom: "@/components/ui/modal", checkRawElement: true },
       table: { replaceWith: "Table", importFrom: "@/components/ui/table", checkRawElement: true },
       thead: { replaceWith: "TableHeader", importFrom: "@/components/ui/table", checkRawElement: true },
       tbody: { replaceWith: "TableBody", importFrom: "@/components/ui/table", checkRawElement: true },
@@ -146,7 +151,8 @@ var berserkPreset = {
     "table-no-horizontal-stacking": "error",
     "table-windowed-pagination": "error",
     "tabs-component-required": "error",
-    "component-inventory-active": "error"
+    "component-inventory-active": "error",
+    "no-wrapping-compact-elements": "error"
   }
 };
 
@@ -183,7 +189,10 @@ var defaultPreset = {
   components: {
     disallowRawHtml: {
       button: { replaceWith: "Button", importFrom: "@/components/ui/button", checkRawElement: true },
-      select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true }
+      select: { replaceWith: "Dropdown", importFrom: "@/components/ui/dropdown", checkRawElement: true },
+      textarea: { replaceWith: "Textarea", importFrom: "@/components/ui/textarea", checkRawElement: true },
+      progress: { replaceWith: "ProgressBar", importFrom: "@/components/ui/progress", checkRawElement: true },
+      dialog: { replaceWith: "Modal or Dialog", importFrom: "@/components/ui/modal", checkRawElement: true }
     },
     disallowPseudoChips: true
   },
@@ -194,7 +203,8 @@ var defaultPreset = {
     "no-pseudo-chips": "warn",
     "no-chip-colored-buttons": "error",
     "no-text-arrows": "error",
-    "no-backdrop-blur": "warn"
+    "no-backdrop-blur": "warn",
+    "no-wrapping-compact-elements": "warn"
   }
 };
 
@@ -258,6 +268,221 @@ var pythonPreset = {
   }
 };
 
+// src/detector/index.ts
+import fs2 from "fs";
+import path2 from "path";
+
+// src/detector/ignores.ts
+import fs from "fs";
+import path from "path";
+var DEFAULT_IGNORES = [
+  "**/node_modules/**",
+  "**/.next/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/out/**",
+  "**/.turbo/**",
+  "**/.git/**",
+  "**/coverage/**",
+  "**/.venv/**",
+  "**/venv/**",
+  "**/env/**",
+  "**/__pycache__/**",
+  "**/.pytest_cache/**",
+  "**/*.pyc",
+  // Non-UI code
+  "**/api/**",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/__tests__/**",
+  "**/*.stories.*",
+  "**/generated/**"
+];
+function getSmartIgnores(cwd) {
+  const result = new Set(DEFAULT_IGNORES);
+  const gitignorePath = path.resolve(cwd, ".gitignore");
+  if (fs.existsSync(gitignorePath)) {
+    try {
+      const content = fs.readFileSync(gitignorePath, "utf-8");
+      const lines = content.split(/\r?\n/);
+      for (let line of lines) {
+        line = line.trim();
+        if (!line || line.startsWith("#")) continue;
+        if (line.startsWith("/")) {
+          line = line.substring(1);
+        }
+        if (line.endsWith("/")) {
+          line = line.slice(0, -1);
+        }
+        if (line) {
+          result.add(`**/${line}/**`);
+          result.add(`**/${line}`);
+        }
+      }
+    } catch {
+    }
+  }
+  return Array.from(result);
+}
+
+// src/detector/index.ts
+function safeReadJson(filePath) {
+  try {
+    if (fs2.existsSync(filePath)) {
+      const raw = fs2.readFileSync(filePath, "utf-8");
+      return JSON.parse(raw);
+    }
+  } catch {
+  }
+  return null;
+}
+function detectProject(cwd = process.cwd()) {
+  const pkg = safeReadJson(path2.resolve(cwd, "package.json"));
+  const deps = { ...pkg?.dependencies || {}, ...pkg?.devDependencies || {} };
+  const hasRequirements = fs2.existsSync(path2.resolve(cwd, "requirements.txt"));
+  const hasPyproject = fs2.existsSync(path2.resolve(cwd, "pyproject.toml"));
+  const hasPython = hasRequirements || hasPyproject || fs2.existsSync(path2.resolve(cwd, "setup.py"));
+  let isStreamlit = false;
+  if (hasPython) {
+    if (hasRequirements) {
+      try {
+        const reqContent = fs2.readFileSync(path2.resolve(cwd, "requirements.txt"), "utf-8");
+        if (reqContent.toLowerCase().includes("streamlit")) {
+          isStreamlit = true;
+        }
+      } catch {
+      }
+    }
+  }
+  const isPnpmMonorepo = fs2.existsSync(path2.resolve(cwd, "pnpm-workspace.yaml"));
+  const isTurbo = fs2.existsSync(path2.resolve(cwd, "turbo.json"));
+  let monorepoWorkspaces = [];
+  if (Array.isArray(pkg?.workspaces)) {
+    monorepoWorkspaces = pkg.workspaces;
+  } else if (pkg?.workspaces?.packages) {
+    monorepoWorkspaces = pkg.workspaces.packages;
+  }
+  const isMonorepo = isPnpmMonorepo || isTurbo || monorepoWorkspaces.length > 0;
+  let framework = "unknown";
+  if (deps["next"]) {
+    framework = "nextjs";
+  } else if (deps["vite"]) {
+    framework = "vite";
+  } else if (deps["@remix-run/react"]) {
+    framework = "remix";
+  } else if (deps["astro"]) {
+    framework = "astro";
+  } else if (deps["react-scripts"]) {
+    framework = "react-cra";
+  } else if (isStreamlit) {
+    framework = "streamlit";
+  } else if (hasPython) {
+    framework = "python-general";
+  }
+  const libraries = [];
+  const hasShadcnConfig = fs2.existsSync(path2.resolve(cwd, "components.json"));
+  if (hasShadcnConfig || deps["@radix-ui/react-slot"]) {
+    libraries.push("shadcn");
+  }
+  if (Object.keys(deps).some((d) => d.startsWith("@radix-ui/"))) {
+    if (!libraries.includes("shadcn")) libraries.push("radix");
+  }
+  if (deps["tailwindcss"]) {
+    libraries.push("tailwind");
+  }
+  if (deps["lucide-react"] || deps["lucide"]) {
+    libraries.push("lucide");
+  }
+  if (deps["@mui/material"] || deps["@material-ui/core"]) {
+    libraries.push("mui");
+  }
+  if (deps["@chakra-ui/react"]) {
+    libraries.push("chakra");
+  }
+  const hasTailwind = Boolean(deps["tailwindcss"] || fs2.existsSync(path2.resolve(cwd, "tailwind.config.js")) || fs2.existsSync(path2.resolve(cwd, "tailwind.config.ts")));
+  let tailwindVersion;
+  if (hasTailwind) {
+    const rawVersion = deps["tailwindcss"] || "";
+    if (rawVersion.includes("^4") || rawVersion.includes("~4") || rawVersion.startsWith("4")) {
+      tailwindVersion = "v4";
+    } else {
+      tailwindVersion = "v3";
+    }
+  }
+  const hasTypeScript = Boolean(deps["typescript"] || fs2.existsSync(path2.resolve(cwd, "tsconfig.json")));
+  const suggestedIncludes = [];
+  const extGroup = hasTypeScript ? "{tsx,jsx,ts,js}" : "{jsx,js}";
+  const candidateDirs = [
+    "frontend/src",
+    "frontend",
+    "apps/web/src",
+    "apps/web",
+    "client/src",
+    "client",
+    "src",
+    "app",
+    "pages",
+    "components"
+  ];
+  let foundUiDir = false;
+  for (const dir of candidateDirs) {
+    if (fs2.existsSync(path2.resolve(cwd, dir))) {
+      if (dir === "frontend" && fs2.existsSync(path2.resolve(cwd, "frontend/src"))) continue;
+      if (dir === "client" && fs2.existsSync(path2.resolve(cwd, "client/src"))) continue;
+      if (dir === "apps/web" && fs2.existsSync(path2.resolve(cwd, "apps/web/src"))) continue;
+      suggestedIncludes.push(`${dir}/**/*.${extGroup}`);
+      foundUiDir = true;
+      break;
+    }
+  }
+  if (hasPython) {
+    suggestedIncludes.push("**/*.py");
+  } else if (!foundUiDir) {
+    suggestedIncludes.push(`**/*.${extGroup}`);
+  }
+  const suggestedIgnores = getSmartIgnores(cwd);
+  if (hasShadcnConfig || libraries.includes("shadcn")) {
+    suggestedIgnores.push("**/components/ui/**");
+  }
+  const tokenCandidates = [
+    "frontend/src/lib/tokens.ts",
+    "frontend/src/tokens.ts",
+    "src/lib/tokens.ts",
+    "src/tokens.ts",
+    "src/design/tokens.ts",
+    "styles/tokens.css",
+    "src/app/globals.css",
+    "frontend/src/index.css",
+    "src/index.css"
+  ];
+  let tokensFile;
+  for (const candidate of tokenCandidates) {
+    if (fs2.existsSync(path2.resolve(cwd, candidate))) {
+      tokensFile = candidate;
+      break;
+    }
+  }
+  let preset = "berserk";
+  if (framework === "streamlit" || framework === "python-general") {
+    preset = "python";
+  }
+  return {
+    root: cwd,
+    isMonorepo,
+    monorepoWorkspaces,
+    framework,
+    libraries,
+    hasTailwind,
+    tailwindVersion,
+    hasTypeScript,
+    hasPython,
+    suggestedIncludes,
+    suggestedIgnores,
+    tokensFile,
+    preset
+  };
+}
+
 // src/config/loader.ts
 var CONFIG_FILES = [
   "dse.config.js",
@@ -269,17 +494,18 @@ var CONFIG_FILES = [
   ".dserc"
 ];
 async function loadConfig(cwd = process.cwd(), customPath) {
+  const detected = detectProject(cwd);
   let userConfig = {};
   let foundConfigPath = null;
   if (customPath) {
-    const resolved = path.resolve(cwd, customPath);
-    if (fs.existsSync(resolved)) {
+    const resolved = path3.resolve(cwd, customPath);
+    if (fs3.existsSync(resolved)) {
       foundConfigPath = resolved;
     }
   } else {
     for (const filename of CONFIG_FILES) {
-      const candidate = path.resolve(cwd, filename);
-      if (fs.existsSync(candidate)) {
+      const candidate = path3.resolve(cwd, filename);
+      if (fs3.existsSync(candidate)) {
         foundConfigPath = candidate;
         break;
       }
@@ -287,7 +513,7 @@ async function loadConfig(cwd = process.cwd(), customPath) {
   }
   if (foundConfigPath) {
     if (foundConfigPath.endsWith(".json") || foundConfigPath.endsWith(".dserc")) {
-      const content = fs.readFileSync(foundConfigPath, "utf-8");
+      const content = fs3.readFileSync(foundConfigPath, "utf-8");
       try {
         userConfig = JSON.parse(content);
       } catch (err) {
@@ -300,7 +526,7 @@ async function loadConfig(cwd = process.cwd(), customPath) {
         userConfig = mod.default || mod;
       } catch {
         try {
-          const content = fs.readFileSync(foundConfigPath, "utf-8");
+          const content = fs3.readFileSync(foundConfigPath, "utf-8");
           const cjsReq = createCjsEvaluator(foundConfigPath, content);
           userConfig = cjsReq;
         } catch (innerErr) {
@@ -309,18 +535,19 @@ async function loadConfig(cwd = process.cwd(), customPath) {
       }
     }
   }
-  let presetName = userConfig.preset;
-  if (!presetName) {
-    const isPython = fs.existsSync(path.resolve(cwd, "requirements.txt")) || fs.existsSync(path.resolve(cwd, "pyproject.toml")) || fs.existsSync(path.resolve(cwd, ".streamlit")) || fs.existsSync(path.resolve(cwd, "manage.py"));
-    presetName = isPython ? "python" : "berserk";
-  }
+  let presetName = userConfig.preset || detected.preset;
   let basePreset = berserkPreset;
   if (presetName === "python") {
     basePreset = pythonPreset;
   } else if (presetName === "recommended") {
     basePreset = defaultPreset;
   }
-  return mergeConfigs(basePreset, userConfig);
+  const autonomousDefaults = {
+    include: detected.suggestedIncludes,
+    exclude: detected.suggestedIgnores
+  };
+  const withAutonomous = mergeConfigs(basePreset, autonomousDefaults);
+  return mergeConfigs(withAutonomous, userConfig);
 }
 function createCjsEvaluator(filePath, content) {
   if (content.includes("export default")) {
@@ -370,8 +597,8 @@ function mergeConfigs(base, overrides) {
 }
 
 // src/rules/runner.ts
-import fs2 from "fs";
-import path2 from "path";
+import fs4 from "fs";
+import path4 from "path";
 import fg from "fast-glob";
 
 // src/parser/ast.ts
@@ -784,16 +1011,52 @@ function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, 
         pos.line,
         pos.col,
         "no-raw-html-elements",
-        `Raw browser default '<input type="checkbox">' detected. Use standard design system '<Checkbox>' or '<Toggle>'.`,
+        `Raw browser default '<input type="checkbox">' detected. Never use unstyled browser checkboxes. Use standard design system '<Checkbox>' or '<Toggle>'.`,
         lineSnippet
       );
-    } else if (["text", "email", "search"].includes(typeVal)) {
+    } else if (typeVal === "radio") {
       addViolation(
         filePath,
         pos.line,
         pos.col,
         "no-raw-html-elements",
-        `Raw '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
+        `Raw browser default '<input type="radio">' detected. Never use unstyled browser radio buttons. Use standard design system '<RadioGroup>' or styled toggle.`,
+        lineSnippet
+      );
+    } else if (typeVal === "range") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="range">' detected. Never use unstyled browser sliders. Use standard design system '<Slider>'.`,
+        lineSnippet
+      );
+    } else if (typeVal === "file") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="file">' detected. Never display native unstyled file picker inputs. Use a custom styled dropzone or trigger.`,
+        lineSnippet
+      );
+    } else if (typeVal === "color") {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="color">' detected. Never use native browser color pickers. Use a custom color picker component.`,
+        lineSnippet
+      );
+    } else if (["text", "email", "search", "password", "number", "tel", "url"].includes(typeVal)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-raw-html-elements",
+        `Raw browser default '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
         lineSnippet
       );
     }
@@ -1051,6 +1314,9 @@ function checkPseudoChips(tagName, attributes, pos, filePath, addViolation, line
 function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config) {
   if (!attributes.className) return;
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
+  const isChip = ["Chip", "Badge", "Tag", "StatusBadge"].includes(tagName);
+  const isTab = ["Tab", "TabTrigger", "TabsTrigger"].includes(tagName);
+  const isCompactElement = isButton || isChip || isTab;
   const isCheckbox = tagName === "Checkbox" || attributes.type?.initializer?.getText(sourceFile)?.includes("checkbox") || attributes.role?.initializer?.getText(sourceFile)?.includes("checkbox") || Boolean(attributes["aria-checked"]) || attributes.className && /\b(?:size-5|w-5\s+h-5)\b/.test(attributes.className.rawText);
   const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
   const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
@@ -1090,8 +1356,33 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
           );
         }
       }
+      if (isCompactElement && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+        if (dec.core === "flex-wrap" || dec.core === "whitespace-normal" || dec.core === "whitespace-pre-wrap") {
+          addViolation(
+            filePath,
+            nodePos.line,
+            nodePos.col,
+            "no-wrapping-compact-elements",
+            `Disallowed text wrapping class '${dec.core}' on <${tagName}>. Compact interactive elements (buttons, chips, badges, tabs) must never wrap text across multiple lines.`,
+            lineSnippet
+          );
+        }
+      }
     });
   });
+  if (tagName === "TableHead" && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+    const rawClass = attributes.className?.rawText || "";
+    if (/\b(?:flex-wrap|whitespace-normal|whitespace-pre-wrap)\b/.test(rawClass)) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "no-wrapping-compact-elements",
+        `Disallowed text wrapping on <TableHead>. Column headers must remain single-line ('whitespace-nowrap') to preserve table column alignment.`,
+        lineSnippet
+      );
+    }
+  }
 }
 
 // src/rules/regex-rules.ts
@@ -1312,8 +1603,8 @@ function runPythonRules(content, filePath, addViolation, config) {
 
 // src/rules/runner.ts
 async function runDseScan(config, cwd = process.cwd()) {
-  let targetDir = path2.resolve(cwd, config.targetDir || "src");
-  if (!fs2.existsSync(targetDir)) {
+  let targetDir = path4.resolve(cwd, config.targetDir || "src");
+  if (!fs4.existsSync(targetDir)) {
     targetDir = cwd;
   }
   const includePatterns = config.include || ["**/*.{tsx,jsx,ts,js}"];
@@ -1345,7 +1636,7 @@ async function runDseScan(config, cwd = process.cwd()) {
   const violations = [];
   const seenViolationKeys = /* @__PURE__ */ new Set();
   const addViolation = (file, line, col, rule, message, snippet) => {
-    const normFile = path2.relative(cwd, file).replace(/\\/g, "/");
+    const normFile = path4.relative(cwd, file).replace(/\\/g, "/");
     const key = `${normFile}:${line}:${rule}`;
     if (seenViolationKeys.has(key)) return;
     seenViolationKeys.add(key);
@@ -1363,7 +1654,7 @@ async function runDseScan(config, cwd = process.cwd()) {
   };
   let scannedJsxFiles = false;
   for (const filePath of files) {
-    const content = fs2.readFileSync(filePath, "utf-8");
+    const content = fs4.readFileSync(filePath, "utf-8");
     const isJsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx") || filePath.endsWith(".ts") || filePath.endsWith(".js");
     const isPythonOrTemplate = filePath.endsWith(".py") || filePath.endsWith(".html") || filePath.endsWith(".jinja") || filePath.endsWith(".jinja2") || filePath.endsWith(".css");
     if (isJsx) {
@@ -1484,8 +1775,8 @@ function formatJson(result) {
 }
 
 // src/scaffold/index.ts
-import fs3 from "fs";
-import path3 from "path";
+import fs5 from "fs";
+import path5 from "path";
 
 // src/scaffold/templates/tokens.ts
 var tokensTemplate = `/**
@@ -1628,7 +1919,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = "", variant = "primary", size = "default", children, ...props }, ref) => {
     // Standard 36px height, 8px radius, font-medium, strictly neutral palette
     const baseClasses =
-      "inline-flex items-center justify-center font-medium text-sm rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none";
+      "inline-flex items-center justify-center font-medium text-sm rounded-md whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none cursor-pointer";
+
 
     const variantClasses = {
       primary: "bg-neutral-900 text-white hover:bg-neutral-800 shadow-2xs",
@@ -1669,7 +1961,8 @@ export const Chip: React.FC<ChipProps> = ({
 }) => {
   // Standard 36px height, 8px radius, 14px typography
   const baseClasses =
-    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium gap-1.5 select-none";
+    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium whitespace-nowrap shrink-0 gap-1.5 select-none";
+
 
   const variantClasses = {
     neutral: "bg-neutral-100 text-neutral-800 border border-neutral-200",
@@ -1839,12 +2132,12 @@ export const TableHead = React.forwardRef<HTMLTableCellElement, TableHeadProps>(
   ({ className = "", icon, resizable = true, children, ...props }, ref) => (
     <th
       ref={ref}
-      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative \${className}\`}
+      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative whitespace-nowrap \${className}\`}
       {...props}
     >
       <div className="flex items-center gap-2">
         {icon && <span className="text-neutral-500 shrink-0">{icon}</span>}
-        <span>{children}</span>
+        <span className="whitespace-nowrap">{children}</span>
       </div>
     </th>
   )
@@ -1890,7 +2183,7 @@ export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange, className
             type="button"
             disabled={tab.disabled}
             onClick={() => onChange(tab.id)}
-            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium transition-all select-none \${
+            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium whitespace-nowrap shrink-0 transition-all select-none \${
               isActive
                 ? "bg-white text-neutral-900 shadow-2xs"
                 : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"
@@ -1982,8 +2275,8 @@ var COMPONENT_TEMPLATES = {
 };
 function scaffoldConfig(cwd = process.cwd(), preset = "berserk") {
   if (preset === "python") {
-    const jsonPath = path3.resolve(cwd, "dse.config.json");
-    if (fs3.existsSync(jsonPath)) return jsonPath;
+    const jsonPath = path5.resolve(cwd, "dse.config.json");
+    if (fs5.existsSync(jsonPath)) return jsonPath;
     const content2 = JSON.stringify(
       {
         preset: "python",
@@ -2000,11 +2293,11 @@ function scaffoldConfig(cwd = process.cwd(), preset = "berserk") {
       null,
       2
     ) + "\n";
-    fs3.writeFileSync(jsonPath, content2, "utf-8");
+    fs5.writeFileSync(jsonPath, content2, "utf-8");
     return jsonPath;
   }
-  const configPath = path3.resolve(cwd, "dse.config.js");
-  if (fs3.existsSync(configPath)) {
+  const configPath = path5.resolve(cwd, "dse.config.js");
+  if (fs5.existsSync(configPath)) {
     return configPath;
   }
   const content = `import { defineConfig } from "design-system-enforcer";
@@ -2032,21 +2325,21 @@ export default defineConfig({
   ],
 });
 `;
-  fs3.writeFileSync(configPath, content, "utf-8");
+  fs5.writeFileSync(configPath, content, "utf-8");
   return configPath;
 }
 function scaffoldTokens(cwd = process.cwd()) {
-  const libDir = path3.resolve(cwd, "src/lib");
-  const appDir = path3.resolve(cwd, "src/app");
-  if (!fs3.existsSync(libDir)) fs3.mkdirSync(libDir, { recursive: true });
-  if (!fs3.existsSync(appDir)) fs3.mkdirSync(appDir, { recursive: true });
-  const tokensPath = path3.join(libDir, "tokens.ts");
-  if (!fs3.existsSync(tokensPath)) {
-    fs3.writeFileSync(tokensPath, tokensTemplate, "utf-8");
+  const libDir = path5.resolve(cwd, "src/lib");
+  const appDir = path5.resolve(cwd, "src/app");
+  if (!fs5.existsSync(libDir)) fs5.mkdirSync(libDir, { recursive: true });
+  if (!fs5.existsSync(appDir)) fs5.mkdirSync(appDir, { recursive: true });
+  const tokensPath = path5.join(libDir, "tokens.ts");
+  if (!fs5.existsSync(tokensPath)) {
+    fs5.writeFileSync(tokensPath, tokensTemplate, "utf-8");
   }
-  const cssPath = path3.join(appDir, "globals.css");
-  if (!fs3.existsSync(cssPath)) {
-    fs3.writeFileSync(cssPath, cssTemplate, "utf-8");
+  const cssPath = path5.join(appDir, "globals.css");
+  if (!fs5.existsSync(cssPath)) {
+    fs5.writeFileSync(cssPath, cssTemplate, "utf-8");
   }
   return { tokensPath, cssPath };
 }
@@ -2056,13 +2349,13 @@ function scaffoldComponent(componentName, cwd = process.cwd()) {
   if (!template) {
     return null;
   }
-  const uiDir = path3.resolve(cwd, "src/components/ui");
-  if (!fs3.existsSync(uiDir)) {
-    fs3.mkdirSync(uiDir, { recursive: true });
+  const uiDir = path5.resolve(cwd, "src/components/ui");
+  if (!fs5.existsSync(uiDir)) {
+    fs5.mkdirSync(uiDir, { recursive: true });
   }
-  const targetPath = path3.join(uiDir, template.filename);
-  if (!fs3.existsSync(targetPath)) {
-    fs3.writeFileSync(targetPath, template.content, "utf-8");
+  const targetPath = path5.join(uiDir, template.filename);
+  if (!fs5.existsSync(targetPath)) {
+    fs5.writeFileSync(targetPath, template.content, "utf-8");
   }
   return targetPath;
 }
@@ -2132,7 +2425,7 @@ var program = new Command();
 program.name("dse").description("Design System Enforcer (DSE) - AST-based Linter and Scaffold Engine").version("1.0.0");
 program.command("check [targetDir]", { isDefault: true }).description("Scan codebase and enforce Design System rules").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").option("-f, --format <format>", "Output format: 'stylish' | 'json'", "stylish").option("--strict", "Treat warnings as errors", false).action(async (targetDirArg, options) => {
   try {
-    const cwd = targetDirArg ? path4.resolve(process.cwd(), targetDirArg) : process.cwd();
+    const cwd = targetDirArg ? path6.resolve(process.cwd(), targetDirArg) : process.cwd();
     const config = await loadConfig(cwd, options.config);
     const result = await runDseScan(config, cwd);
     if (options.format === "json") {
@@ -2152,18 +2445,18 @@ program.command("check [targetDir]", { isDefault: true }).description("Scan code
 program.command("init").description("Initialize DSE configuration and optionally scaffold base primitives").option("--preset <name>", "Preset to use: 'berserk' | 'recommended' | 'python'").option("--with-primitives", "Scaffold full base primitives and tokens suite", false).action((options) => {
   const cwd = process.cwd();
   console.log(pc2.bold(pc2.cyan("\nInitializing Design System Enforcer (DSE)...")));
-  const isPythonProject = fs4.existsSync(path4.resolve(cwd, "requirements.txt")) || fs4.existsSync(path4.resolve(cwd, "pyproject.toml")) || fs4.existsSync(path4.resolve(cwd, ".streamlit"));
+  const isPythonProject = fs6.existsSync(path6.resolve(cwd, "requirements.txt")) || fs6.existsSync(path6.resolve(cwd, "pyproject.toml")) || fs6.existsSync(path6.resolve(cwd, ".streamlit"));
   const preset = options.preset || (isPythonProject ? "python" : "berserk");
   const configPath = scaffoldConfig(cwd, preset);
-  console.log(pc2.green("\u2714 Created config:"), pc2.bold(path4.relative(cwd, configPath)), pc2.dim(`(preset: ${preset})`));
-  const pkgPath = path4.resolve(cwd, "package.json");
-  if (fs4.existsSync(pkgPath)) {
+  console.log(pc2.green("\u2714 Created config:"), pc2.bold(path6.relative(cwd, configPath)), pc2.dim(`(preset: ${preset})`));
+  const pkgPath = path6.resolve(cwd, "package.json");
+  if (fs6.existsSync(pkgPath)) {
     try {
-      const pkg = JSON.parse(fs4.readFileSync(pkgPath, "utf-8"));
+      const pkg = JSON.parse(fs6.readFileSync(pkgPath, "utf-8"));
       pkg.scripts = pkg.scripts || {};
       if (!pkg.scripts.dse) {
         pkg.scripts.dse = "dse";
-        fs4.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
+        fs6.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf-8");
         console.log(pc2.green("\u2714 Added script 'dse' to package.json"));
       }
     } catch (err) {
@@ -2174,7 +2467,7 @@ program.command("init").description("Initialize DSE configuration and optionally
     console.log(pc2.cyan("Scaffolding primitives and theme tokens..."));
     const created = scaffoldAllPrimitives(cwd);
     created.forEach((file) => {
-      console.log(pc2.green("\u2714 Created:"), pc2.dim(path4.relative(cwd, file)));
+      console.log(pc2.green("\u2714 Created:"), pc2.dim(path6.relative(cwd, file)));
     });
   } else {
     console.log(
@@ -2189,7 +2482,7 @@ program.command("add <components...>").description("Scaffold specific rule-compl
   for (const comp of components) {
     const filePath = scaffoldComponent(comp, cwd);
     if (filePath) {
-      console.log(pc2.green("\u2714 Created:"), pc2.bold(path4.relative(cwd, filePath)));
+      console.log(pc2.green("\u2714 Created:"), pc2.bold(path6.relative(cwd, filePath)));
     } else {
       console.log(
         pc2.yellow(`\u26A0 Unknown component '${comp}'. Available: ${Object.keys(COMPONENT_TEMPLATES).join(", ")}`)
@@ -2203,7 +2496,7 @@ program.command("scaffold").description("Scaffold all base primitives and HSL to
   console.log(pc2.bold(pc2.cyan("\nScaffolding full design system suite...")));
   const created = scaffoldAllPrimitives(cwd);
   created.forEach((file) => {
-    console.log(pc2.green("\u2714 Created:"), pc2.bold(path4.relative(cwd, file)));
+    console.log(pc2.green("\u2714 Created:"), pc2.bold(path6.relative(cwd, file)));
   });
   console.log(pc2.bold(pc2.green("\n\u2714 All design system primitives scaffolded successfully!\n")));
 });
@@ -2212,9 +2505,9 @@ program.command("export-rules").description("Export rules in Markdown format for
   const config = await loadConfig(cwd);
   const rulesMd = generateMarkdownRules(config);
   if (options.write) {
-    const targetFile = path4.resolve(cwd, options.write);
-    if (fs4.existsSync(targetFile)) {
-      let existing = fs4.readFileSync(targetFile, "utf-8");
+    const targetFile = path6.resolve(cwd, options.write);
+    if (fs6.existsSync(targetFile)) {
+      let existing = fs6.readFileSync(targetFile, "utf-8");
       const startTag = "<!-- BEGIN:design-system-enforcer-rules -->";
       const endTag = "<!-- END:design-system-enforcer-rules -->";
       if (existing.includes(startTag) && existing.includes(endTag)) {
@@ -2226,15 +2519,34 @@ program.command("export-rules").description("Export rules in Markdown format for
 ${rulesMd.trim()}
 `;
       }
-      fs4.writeFileSync(targetFile, existing, "utf-8");
+      fs6.writeFileSync(targetFile, existing, "utf-8");
       console.log(pc2.green(`\u2714 Updated rules in ${options.write}`));
     } else {
-      fs4.writeFileSync(targetFile, rulesMd, "utf-8");
+      fs6.writeFileSync(targetFile, rulesMd, "utf-8");
       console.log(pc2.green(`\u2714 Created ${options.write} with design system rules`));
     }
   } else {
     console.log(rulesMd);
   }
+});
+program.command("detect [targetDir]").description("Inspect project architecture, framework, libraries, and design tokens autonomously").action((targetDirArg) => {
+  const cwd = targetDirArg ? path6.resolve(process.cwd(), targetDirArg) : process.cwd();
+  const info = detectProject(cwd);
+  console.log(pc2.bold(pc2.cyan("\n\u{1F50D} DSE Autonomous Project Diagnostics\n")));
+  console.log(`  ${pc2.bold("Target Directory:")}   ${info.root}`);
+  console.log(`  ${pc2.bold("Framework:")}          ${pc2.green(info.framework)}`);
+  console.log(`  ${pc2.bold("Monorepo:")}           ${info.isMonorepo ? pc2.yellow("Yes") : "No"}`);
+  if (info.isMonorepo && info.monorepoWorkspaces.length > 0) {
+    console.log(`  ${pc2.bold("Workspaces:")}         ${info.monorepoWorkspaces.join(", ")}`);
+  }
+  console.log(`  ${pc2.bold("Libraries:")}          ${info.libraries.length ? pc2.magenta(info.libraries.join(", ")) : "None"}`);
+  console.log(`  ${pc2.bold("Tailwind CSS:")}       ${info.hasTailwind ? pc2.green(info.tailwindVersion || "Yes") : "No"}`);
+  console.log(`  ${pc2.bold("TypeScript:")}         ${info.hasTypeScript ? "Yes" : "No"}`);
+  console.log(`  ${pc2.bold("Tokens File:")}        ${info.tokensFile ? pc2.cyan(info.tokensFile) : pc2.dim("None (using preset defaults)")}`);
+  console.log(`  ${pc2.bold("Default Preset:")}     ${pc2.yellow(info.preset)}`);
+  console.log(`  ${pc2.bold("Auto Includes:")}      ${info.suggestedIncludes.join(", ")}`);
+  console.log(`  ${pc2.bold("Auto Ignores:")}       ${info.suggestedIgnores.slice(0, 5).join(", ")} (+${Math.max(0, info.suggestedIgnores.length - 5)} more)`);
+  console.log("");
 });
 program.parse(process.argv);
 //# sourceMappingURL=cli.js.map
