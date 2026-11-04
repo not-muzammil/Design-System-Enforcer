@@ -8,9 +8,11 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   shims: true,
+  external: ["react", "react-dom"],
   banner: {
     js: "#!/usr/bin/env node",
   },
 });
+
 
 

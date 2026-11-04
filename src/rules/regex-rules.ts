@@ -7,6 +7,14 @@ export function runRegexRules(
   addViolation: AddViolationFn,
   config: DseConfig
 ): void {
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile =
+    normPath.includes("components/ui/") ||
+    normPath.includes("lib/tokens.") ||
+    normPath.includes("tokens.") ||
+    normPath.includes("globals.css") ||
+    normPath.includes("index.css") ||
+    (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
   const lines = content.split("\n");
   // Only match actual Unicode arrows and ASCII arrows like -> or <-, NOT JS arrow functions '=>'
   const unicodeArrowRegex = /[\u2190-\u2199\u21D0-\u21D9\u2794-\u27BF\u21B0-\u21B5\u27F5-\u27FF]|(?:->|<-)/gu;
@@ -82,7 +90,7 @@ export function runRegexRules(
       while ((match = hexColorRegex.exec(codeOnlyLine)) !== null) {
         const hex = match[0];
         // Allow pure black/white if explicitly permitted or in SVG data
-        if (!codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
+        if (!isPrimitivesFile && !codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
           addViolation(
             filePath,
             lineNum,
@@ -127,3 +135,5 @@ export function runRegexRules(
     }
   });
 }
+
+

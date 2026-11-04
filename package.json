@@ -1,6 +1,6 @@
 {
   "name": "design-system-enforcer",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Zero-compromise Design System Enforcer (DSE) CLI & AST Linter for React/Next.js projects. Enforces typography, geometry, component invariants, colors, and layout rules.",
   "keywords": [
     "design-system",
@@ -62,6 +62,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.1",
+    "@types/react": "^19.3.0",
     "tsup": "^8.3.6",
     "vitest": "^3.0.5"
   },

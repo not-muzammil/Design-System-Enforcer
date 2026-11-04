@@ -208,5 +208,47 @@ export function evaluateColorToken(core: string, config?: ColorsConfig): TokenVi
     }
   }
 
+  // Strict Zero-Hardcoded Colors Enforcement
+  if (config?.disallowHardcodedColors) {
+    // Flag arbitrary inline color brackets: bg-[#...], text-[rgb(...)], border-[hsl(...)]
+    const arbitraryColorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-\[(#(?:[0-9a-fA-F]{3,8})|rgba?\(|hsla?\([^\]]+)\]/);
+    if (arbitraryColorMatch) {
+      violations.push({
+        rule: "no-hardcoded-colors",
+        message: `Disallowed hardcoded inline color '${core}'. Colors must not be hardcoded in application code. Use design system CSS variables (e.g. 'bg-[var(--primary)]') or token classes.`,
+      });
+    }
+
+    // Flag non-neutral raw Tailwind color palette classes outside primitives (e.g. bg-blue-500, text-red-600, border-emerald-400)
+    // Permitted in application code: neutral, transparent, current, inherit, white, black, or standard theme aliases (primary, secondary, muted, accent, background, border)
+    const rawPaletteMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-([a-z]+)(?:-[0-9]{2,3})?$/);
+    if (rawPaletteMatch) {
+      const family = rawPaletteMatch[1];
+      const allowedFamilies = new Set([
+        "neutral",
+        "transparent",
+        "current",
+        "inherit",
+        "white",
+        "black",
+        "primary",
+        "secondary",
+        "muted",
+        "accent",
+        "border",
+        "input",
+        "background",
+        "foreground",
+      ]);
+
+      if (!allowedFamilies.has(family)) {
+        violations.push({
+          rule: "no-hardcoded-colors",
+          message: `Disallowed hardcoded color class '${core}'. Application code must only use design system tokens ('neutral-*' or 'var(--...)'). Primitive color palettes ('${family}') are only permitted inside canonical UI primitives.`,
+        });
+      }
+    }
+  }
+
   return violations;
 }

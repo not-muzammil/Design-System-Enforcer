@@ -66,6 +66,7 @@ export const berserkPreset: DseConfig = {
       disallowRawHex: true,
       disallowButtonChipColors: true,
       disallowSaturatedGradients: true,
+      disallowHardcodedColors: true,
     },
   },
   components: {
@@ -128,6 +129,9 @@ export const berserkPreset: DseConfig = {
     "tabs-component-required": "error",
     "component-inventory-active": "error",
     "no-wrapping-compact-elements": "error",
+    "no-hardcoded-colors": "error",
   },
 };
+
+
 

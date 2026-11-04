@@ -31,21 +31,168 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
-  berserkPreset: () => berserkPreset,
-  defaultPreset: () => defaultPreset,
+  DesignSystemRuntimeError: () => DesignSystemRuntimeError,
+  DseGuard: () => DseGuard,
+  assertValidStyles: () => assertValidStyles,
+  computeDoctorScore: () => computeDoctorScore,
   defineConfig: () => defineConfig,
-  formatJson: () => formatJson,
-  formatStylish: () => formatStylish,
-  generateMarkdownRules: () => generateMarkdownRules,
+  detectProject: () => detectProject,
+  dseAstroPlugin: () => dseAstroPlugin,
+  generateAgentInstructions: () => generateAgentInstructions,
+  installPreCommitHook: () => installPreCommitHook,
   loadConfig: () => loadConfig,
-  runDseScan: () => runDseScan,
-  scaffoldAllPrimitives: () => scaffoldAllPrimitives,
-  scaffoldComponent: () => scaffoldComponent,
-  scaffoldConfig: () => scaffoldConfig,
-  scaffoldTokens: () => scaffoldTokens,
-  scanProject: () => scanProject
+  runDseFix: () => runDseFix,
+  runDseScan: () => runDseScan
 });
 module.exports = __toCommonJS(index_exports);
+
+// src/runtime/core.ts
+var DesignSystemRuntimeError = class extends Error {
+  techStack;
+  rule;
+  receivedValue;
+  constructor(violation) {
+    const banner = `
+========================================================
+[DSE RUNTIME ERROR: ${violation.techStack.toUpperCase()}]
+========================================================
+Rule: ${violation.rule}
+${violation.message}
+${violation.receivedValue ? `Received Value: ${JSON.stringify(violation.receivedValue)}
+` : ""}========================================================
+`;
+    super(banner);
+    this.name = "DesignSystemRuntimeError";
+    this.techStack = violation.techStack;
+    this.rule = violation.rule;
+    this.receivedValue = violation.receivedValue;
+  }
+};
+function assertValidStyles(classesOrStyles, componentName, techStack = "react") {
+  if (!classesOrStyles) return;
+  if (typeof classesOrStyles === "string") {
+    const hexMatch = classesOrStyles.match(/#(?:[0-9a-fA-F]{3,8})\b/);
+    if (hexMatch) {
+      throw new DesignSystemRuntimeError({
+        techStack,
+        rule: "no-hardcoded-colors",
+        message: `Hardcoded hex color '${hexMatch[0]}' rendered in <${componentName}>. All colors must use design system tokens ('var(--primary)', 'neutral-*').`,
+        elementOrComponent: componentName,
+        receivedValue: hexMatch[0]
+      });
+    }
+    const rawColorMatch = classesOrStyles.match(/\b(?:bg|text|border)-(?:blue|indigo|purple|violet|pink|fuchsia|cyan|teal|rose)-[0-9]{2,3}\b/);
+    if (rawColorMatch) {
+      throw new DesignSystemRuntimeError({
+        techStack,
+        rule: "no-hardcoded-colors",
+        message: `Hardcoded color utility '${rawColorMatch[0]}' rendered in <${componentName}>. Colors outside design system tokens are strictly forbidden.`,
+        elementOrComponent: componentName,
+        receivedValue: rawColorMatch[0]
+      });
+    }
+    const isCompact = ["Button", "IconButton", "Chip", "Badge", "Tab", "TableHead"].includes(componentName);
+    if (isCompact && /\b(?:whitespace-normal|whitespace-pre-wrap|flex-wrap)\b/.test(classesOrStyles)) {
+      throw new DesignSystemRuntimeError({
+        techStack,
+        rule: "no-wrapping-compact-elements",
+        message: `Disallowed text wrapping class detected on compact component <${componentName}>. Compact elements must include 'whitespace-nowrap shrink-0'.`,
+        elementOrComponent: componentName,
+        receivedValue: classesOrStyles
+      });
+    }
+  }
+  if (typeof classesOrStyles === "object") {
+    for (const [prop, val] of Object.entries(classesOrStyles)) {
+      if (typeof val === "string") {
+        if (/#(?:[0-9a-fA-F]{3,8})\b/.test(val) || /^rgb/i.test(val)) {
+          throw new DesignSystemRuntimeError({
+            techStack,
+            rule: "no-hardcoded-colors",
+            message: `Inline hardcoded style '${prop}: ${val}' rendered on <${componentName}>. Colors must reference CSS variables (e.g. 'var(--primary)').`,
+            elementOrComponent: componentName,
+            receivedValue: { [prop]: val }
+          });
+        }
+      }
+    }
+  }
+}
+
+// src/runtime/react.tsx
+var import_react = __toESM(require("react"), 1);
+var import_jsx_runtime = require("react/jsx-runtime");
+var DseGuard = ({ children, strict = true }) => {
+  if (process.env.NODE_ENV === "production" && !strict) {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, { children });
+  }
+  const inspectTree = (node) => {
+    if (!import_react.default.isValidElement(node)) return node;
+    const props = node.props;
+    const type = node.type;
+    const tagName = typeof type === "string" ? type : type.name || "Component";
+    if (typeof type === "string") {
+      const bannedHtml = ["button", "select", "textarea"];
+      if (bannedHtml.includes(type.toLowerCase())) {
+        throw new DesignSystemRuntimeError({
+          techStack: "react",
+          rule: "no-raw-html-elements",
+          message: `Raw browser default '<${type}>' rendered at runtime. You must use canonical '<Button>', '<Dropdown>', or '<Textarea>' components.`,
+          elementOrComponent: type
+        });
+      }
+      if (type.toLowerCase() === "input" && ["checkbox", "radio", "range", "color"].includes(props.type)) {
+        throw new DesignSystemRuntimeError({
+          techStack: "react",
+          rule: "no-raw-html-elements",
+          message: `Raw browser default '<input type="${props.type}">' rendered at runtime. Use standard design system '<Checkbox>' or '<Slider>'.`,
+          elementOrComponent: `input[type=${props.type}]`
+        });
+      }
+    }
+    assertValidStyles(props.className, tagName, "react");
+    assertValidStyles(props.style, tagName, "react");
+    if (props.children) {
+      return import_react.default.cloneElement(node, {
+        ...props,
+        children: import_react.default.Children.map(props.children, inspectTree)
+      });
+    }
+    return node;
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, { children: import_react.default.Children.map(children, inspectTree) });
+};
+
+// src/runtime/astro.ts
+function dseAstroPlugin(options = {}) {
+  return {
+    name: "vite-plugin-dse-astro",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.endsWith(".astro") && !id.endsWith(".jsx") && !id.endsWith(".tsx")) {
+        return null;
+      }
+      const hexMatch = code.match(/className=["'][^"']*?(#(?:[0-9a-fA-F]{3,8}))[^"']*?["']/);
+      if (hexMatch) {
+        throw new DesignSystemRuntimeError({
+          techStack: "astro",
+          rule: "no-hardcoded-colors",
+          message: `In ${id}: Disallowed hardcoded hex color '${hexMatch[1]}' found in template. All colors must use tokens.`,
+          receivedValue: hexMatch[1]
+        });
+      }
+      if (/<button\b[^>]*>/i.test(code) && !id.includes("components/ui/button")) {
+        throw new DesignSystemRuntimeError({
+          techStack: "astro",
+          rule: "no-raw-html-elements",
+          message: `In ${id}: Raw browser default '<button>' found. Use '<Button>' primitive from your design system.`,
+          elementOrComponent: "button"
+        });
+      }
+      return null;
+    }
+  };
+}
 
 // src/config/loader.ts
 var import_node_fs3 = __toESM(require("fs"), 1);
@@ -131,7 +278,8 @@ var berserkPreset = {
       ],
       disallowRawHex: true,
       disallowButtonChipColors: true,
-      disallowSaturatedGradients: true
+      disallowSaturatedGradients: true,
+      disallowHardcodedColors: true
     }
   },
   components: {
@@ -193,7 +341,8 @@ var berserkPreset = {
     "table-windowed-pagination": "error",
     "tabs-component-required": "error",
     "component-inventory-active": "error",
-    "no-wrapping-compact-elements": "error"
+    "no-wrapping-compact-elements": "error",
+    "no-hardcoded-colors": "error"
   }
 };
 
@@ -534,8 +683,8 @@ var CONFIG_FILES = [
   ".dserc.json",
   ".dserc"
 ];
-function defineConfig(config) {
-  return config;
+function defineConfig(config2) {
+  return config2;
 }
 async function loadConfig(cwd = process.cwd(), customPath) {
   const detected = detectProject(cwd);
@@ -819,13 +968,13 @@ function decomposeToken(rawToken) {
   const variants = parts;
   return { raw: rawToken, core, variants };
 }
-function evaluateTypographyToken(core, config) {
+function evaluateTypographyToken(core, config2) {
   const violations = [];
-  const minFont = config?.minFontSize || "14px";
-  const maxFont = config?.maxFontSize || "32px";
-  const maxWeight = config?.maxFontWeight ?? 500;
-  const disallowArbitrary = config?.disallowArbitrarySizes ?? true;
-  const disallowUppercase = config?.disallowUppercase ?? true;
+  const minFont = config2?.minFontSize || "14px";
+  const maxFont = config2?.maxFontSize || "32px";
+  const maxWeight = config2?.maxFontWeight ?? 500;
+  const disallowArbitrary = config2?.disallowArbitrarySizes ?? true;
+  const disallowUppercase = config2?.disallowUppercase ?? true;
   if (/^text-(?:xs|2xs)$/.test(core)) {
     violations.push({
       rule: "font-size-min",
@@ -886,10 +1035,10 @@ function evaluateTypographyToken(core, config) {
   }
   return violations;
 }
-function evaluateGeometryToken(core, config, isCheckbox = false) {
+function evaluateGeometryToken(core, config2, isCheckbox = false) {
   const violations = [];
-  const allowedRadii = new Set(config?.allowedRadii || ["0", "0px", "8px", "12px", "16px", "9999px", "100%"]);
-  const checkboxRadii = new Set(config?.radiiExceptions?.Checkbox || ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"]);
+  const allowedRadii = new Set(config2?.allowedRadii || ["0", "0px", "8px", "12px", "16px", "9999px", "100%"]);
+  const checkboxRadii = new Set(config2?.radiiExceptions?.Checkbox || ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"]);
   if (/^rounded(?:-(?:xs|sm|md|lg|xl|2xl|3xl|none|full))?$/.test(core)) {
     if (core === "rounded-xs" || core === "rounded") {
       if (!isCheckbox) {
@@ -918,9 +1067,9 @@ function evaluateGeometryToken(core, config, isCheckbox = false) {
   }
   return violations;
 }
-function evaluateColorToken(core, config) {
+function evaluateColorToken(core, config2) {
   const violations = [];
-  const bannedFamilies = new Set(config?.bannedColorFamilies || []);
+  const bannedFamilies = new Set(config2?.bannedColorFamilies || []);
   if (bannedFamilies.size > 0) {
     const colorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-([a-z]+)-[0-9]{2,3}$/);
     if (colorMatch) {
@@ -933,7 +1082,7 @@ function evaluateColorToken(core, config) {
       }
     }
   }
-  if (config?.disallowSaturatedGradients) {
+  if (config2?.disallowSaturatedGradients) {
     if (core === "bg-clip-text" || core === "text-transparent") {
       violations.push({
         rule: "no-unapproved-gradients",
@@ -941,11 +1090,46 @@ function evaluateColorToken(core, config) {
       });
     }
   }
+  if (config2?.disallowHardcodedColors) {
+    const arbitraryColorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-\[(#(?:[0-9a-fA-F]{3,8})|rgba?\(|hsla?\([^\]]+)\]/);
+    if (arbitraryColorMatch) {
+      violations.push({
+        rule: "no-hardcoded-colors",
+        message: `Disallowed hardcoded inline color '${core}'. Colors must not be hardcoded in application code. Use design system CSS variables (e.g. 'bg-[var(--primary)]') or token classes.`
+      });
+    }
+    const rawPaletteMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-([a-z]+)(?:-[0-9]{2,3})?$/);
+    if (rawPaletteMatch) {
+      const family = rawPaletteMatch[1];
+      const allowedFamilies = /* @__PURE__ */ new Set([
+        "neutral",
+        "transparent",
+        "current",
+        "inherit",
+        "white",
+        "black",
+        "primary",
+        "secondary",
+        "muted",
+        "accent",
+        "border",
+        "input",
+        "background",
+        "foreground"
+      ]);
+      if (!allowedFamilies.has(family)) {
+        violations.push({
+          rule: "no-hardcoded-colors",
+          message: `Disallowed hardcoded color class '${core}'. Application code must only use design system tokens ('neutral-*' or 'var(--...)'). Primitive color palettes ('${family}') are only permitted inside canonical UI primitives.`
+        });
+      }
+    }
+  }
   return violations;
 }
 
 // src/rules/ast-rules.ts
-function runAstRules(sourceFile, filePath, addViolation, fileImports, config) {
+function runAstRules(sourceFile, filePath, addViolation, fileImports, config2) {
   const isTsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
   if (!isTsx) return;
   const content = sourceFile.getFullText();
@@ -977,26 +1161,26 @@ function runAstRules(sourceFile, filePath, addViolation, fileImports, config) {
       else if (tagName === "TableCell") hasTableCell = true;
       else if (tagName === "TableColumnHeader") usesColumnHeader = true;
       else if (tagName === "TableResizeDivider") usesResizeDivider = true;
-      if (config.rules?.["no-raw-html-elements"] !== "off") {
-        checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config);
+      if (config2.rules?.["no-raw-html-elements"] !== "off") {
+        checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2);
       }
-      checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config);
+      checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2);
       if (tagName === "TableHead") {
-        checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config);
+        checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2);
       }
-      if (tagName === "TableBody" && config.rules?.["table-no-divide-y"] !== "off") {
+      if (tagName === "TableBody" && config2.rules?.["table-no-divide-y"] !== "off") {
         checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineSnippet, sourceFile);
       }
       if (tagName === "TableCell") {
-        checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config);
+        checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2);
       }
-      if (tagName === "Tabs" && config.rules?.["tabs-component-required"] !== "off") {
+      if (tagName === "Tabs" && config2.rules?.["tabs-component-required"] !== "off") {
         checkTabsElement(attributes, pos, filePath, addViolation, lineSnippet, fileImports);
       }
-      if ((tagName === "span" || tagName === "div") && config.rules?.["no-pseudo-chips"] !== "off") {
+      if ((tagName === "span" || tagName === "div") && config2.rules?.["no-pseudo-chips"] !== "off") {
         checkPseudoChips(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile);
       }
-      checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config);
+      checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config2);
     }
     if (import_typescript2.default.isCallExpression(node)) {
       const fnName = node.expression.getText(sourceFile);
@@ -1026,14 +1210,14 @@ function runAstRules(sourceFile, filePath, addViolation, fileImports, config) {
     usesColumnHeader,
     usesResizeDivider,
     usesResizableHook,
-    config
+    config2
   );
 }
-function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config) {
+function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2) {
   if (tagName[0] !== tagName[0].toLowerCase()) {
     return;
   }
-  const replacements = config.components?.disallowRawHtml || {};
+  const replacements = config2.components?.disallowRawHtml || {};
   const configEntry = replacements[tagName.toLowerCase()];
   if (configEntry) {
     addViolation(
@@ -1076,7 +1260,7 @@ function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, 
         `Raw browser default '<input type="range">' detected. Never use unstyled browser sliders. Use standard design system '<Slider>'.`,
         lineSnippet
       );
-    } else if (typeVal === "file") {
+    } else if (typeVal === "file" && !(attributes.className?.initializer?.getText() || "").includes("hidden")) {
       addViolation(
         filePath,
         pos.line,
@@ -1106,10 +1290,10 @@ function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, 
     }
   }
 }
-function checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config) {
+function checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2) {
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
   if (!isButton) return;
-  if (config.rules?.["no-chip-colored-buttons"] !== "off" && attributes.variant && attributes.variant.initializer) {
+  if (config2.rules?.["no-chip-colored-buttons"] !== "off" && attributes.variant && attributes.variant.initializer) {
     const varVal = attributes.variant.initializer.getText().replace(/['"]/g, "");
     if (["danger", "success", "warning", "error"].includes(varVal)) {
       addViolation(
@@ -1123,11 +1307,11 @@ function checkButtonInvariants(tagName, attributes, pos, filePath, addViolation,
     }
   }
 }
-function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config) {
+function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2) {
   const hasIconProp = Boolean(attributes.icon);
   const rawChildren = node.getText(sourceFile);
   const isCheckboxCol = /<(?:Checkbox\b|input[^>]*type=["']checkbox["'])/i.test(rawChildren) || /toggleSelect/i.test(rawChildren) || /selectedEmails|selectedIds|selectedLeadIds/i.test(rawChildren) || attributes.resizable?.initializer?.getText(sourceFile) === "{false}" && /checkbox/i.test(rawChildren);
-  if (config.rules?.["table-head-icon-required"] !== "off" && !hasIconProp && !isCheckboxCol) {
+  if (config2.rules?.["table-head-icon-required"] !== "off" && !hasIconProp && !isCheckboxCol) {
     addViolation(
       filePath,
       pos.line,
@@ -1137,7 +1321,7 @@ function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation,
       lineSnippet
     );
   }
-  if (config.rules?.["table-resizable-required"] !== "off" && attributes.resizable && attributes.resizable.initializer) {
+  if (config2.rules?.["table-resizable-required"] !== "off" && attributes.resizable && attributes.resizable.initializer) {
     const resizableVal = attributes.resizable.initializer.getText(sourceFile);
     if (resizableVal === "{false}" && !isCheckboxCol) {
       addViolation(
@@ -1150,7 +1334,7 @@ function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation,
       );
     }
   }
-  if (config.rules?.["table-no-horizontal-stacking"] !== "off") {
+  if (config2.rules?.["table-no-horizontal-stacking"] !== "off") {
     if (/(?:email\s*(?:&|\/)\s*deliverability|deliverability\s*(?:&|\/)\s*email|pages\s*(?:&|\/)\s*dupes|warmup\s*(?:&|\/)\s*deliverability)/i.test(rawChildren)) {
       addViolation(
         filePath,
@@ -1166,6 +1350,9 @@ function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation,
 function checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineSnippet, sourceFile) {
   if (attributes.className) {
     const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+    const normPath = filePath.replace(/\\/g, "/");
+    const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+    const effectiveColorConfig = isPrimitivesFile ? { ...config.tokens?.colors, disallowHardcodedColors: false } : config.tokens?.colors;
     classStrings.forEach(({ text }) => {
       if (/\bdivide-y\b/.test(text)) {
         addViolation(
@@ -1180,7 +1367,7 @@ function checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineS
     });
   }
 }
-function checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config) {
+function checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2) {
   if (attributes && attributes.colSpan) return;
   const childrenText = node.getText(sourceFile);
   let hasVerticalStack = false;
@@ -1207,7 +1394,7 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
           }
         });
       }
-      if (config.rules?.["table-uniform-typography"] !== "off") {
+      if (config2.rules?.["table-uniform-typography"] !== "off") {
         const isExempt = childTag && ["Button", "IconButton", "ButtonyIcon", "Chip", "Badge", "Input", "Skeleton"].includes(childTag);
         if (!isExempt && childAttrs.className) {
           const classes = extractClassNames(childAttrs.className.initializer, sourceFile);
@@ -1248,7 +1435,7 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
   if (node.children) {
     node.children.forEach(inspectCellDescendant);
   }
-  if (config.rules?.["table-no-cell-stacking"] !== "off") {
+  if (config2.rules?.["table-no-cell-stacking"] !== "off") {
     if (hasVerticalStack || directBlockCount > 1) {
       if (!childrenText.includes("dse-ignore-stack")) {
         addViolation(
@@ -1262,7 +1449,7 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
       }
     }
   }
-  if (config.rules?.["table-no-horizontal-stacking"] !== "off") {
+  if (config2.rules?.["table-no-horizontal-stacking"] !== "off") {
     if (/(?:flex\s+items-center|inline-flex|flex-row|items-center\s+gap)/.test(childrenText) && /<(?:Chip|Badge)\b/.test(childrenText) && /<(?:span|div|p)\b[^>]*>(?:(?!<\/(?:span|div|p)>)[\s\S])*?(?:email|\.email|\{cEmail\}|\{item\.email\}|@)[^<]*?<\/(?:span|div|p)>/i.test(childrenText) && !childrenText.includes("dse-ignore-stack")) {
       addViolation(
         filePath,
@@ -1275,8 +1462,8 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
     }
   }
 }
-function checkTableFileInvariants(filePath, content, addViolation, fileImports, hasTable, hasTableHeader, hasTableHead, hasTableBody, hasTableRow, hasTableCell, usesColumnHeader, usesResizeDivider, usesResizableHook, config) {
-  if (config.rules?.["table-resizable-required"] !== "off") {
+function checkTableFileInvariants(filePath, content, addViolation, fileImports, hasTable, hasTableHeader, hasTableHead, hasTableBody, hasTableRow, hasTableCell, usesColumnHeader, usesResizeDivider, usesResizableHook, config2) {
+  if (config2.rules?.["table-resizable-required"] !== "off") {
     const usesTablePrimitivesWithoutTable = (usesColumnHeader || usesResizeDivider || usesResizableHook) && !hasTable;
     if (usesTablePrimitivesWithoutTable) {
       addViolation(
@@ -1289,7 +1476,7 @@ function checkTableFileInvariants(filePath, content, addViolation, fileImports, 
       );
     }
   }
-  if (hasTable && config.rules?.["table-single-border"] !== "off") {
+  if (hasTable && config2.rules?.["table-single-border"] !== "off") {
     if (/<div\b[^>]*\b(?:border\b|border-stroke|border-neutral)\b[^>]*>\s*<Table\b/.test(content)) {
       addViolation(
         filePath,
@@ -1301,7 +1488,7 @@ function checkTableFileInvariants(filePath, content, addViolation, fileImports, 
       );
     }
   }
-  if (hasTable && config.rules?.["table-windowed-pagination"] !== "off") {
+  if (hasTable && config2.rules?.["table-windowed-pagination"] !== "off") {
     const normFilePath = filePath.replace(/\\/g, "/");
     const isExcludedFromPagination = normFilePath.includes("components/ui/table.tsx") || normFilePath.includes("components/settings/") || normFilePath.includes("app/(dashboard)/settings") || normFilePath.includes("lead-import-modal.tsx") || content.includes("dse-ignore-pagination");
     if (!isExcludedFromPagination) {
@@ -1355,7 +1542,7 @@ function checkPseudoChips(tagName, attributes, pos, filePath, addViolation, line
     }
   });
 }
-function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config) {
+function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config2) {
   if (!attributes.className) return;
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
   const isChip = ["Chip", "Badge", "Tag", "StatusBadge"].includes(tagName);
@@ -1364,31 +1551,34 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
   const isCheckbox = tagName === "Checkbox" || attributes.type?.initializer?.getText(sourceFile)?.includes("checkbox") || attributes.role?.initializer?.getText(sourceFile)?.includes("checkbox") || Boolean(attributes["aria-checked"]) || attributes.className && /\b(?:size-5|w-5\s+h-5)\b/.test(attributes.className.rawText);
   const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
   const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+  const effectiveColorConfig = isPrimitivesFile ? { ...config2.tokens?.colors, disallowHardcodedColors: false } : config2.tokens?.colors;
   classStrings.forEach(({ text, node: stringNode }) => {
     const tokens = splitClassString(text);
     tokens.forEach((rawToken) => {
       const dec = decomposeToken(rawToken);
       if (!dec) return;
       const nodePos = stringNode ? getNodePosition(sourceFile, stringNode) : pos;
-      const typoViolations = evaluateTypographyToken(dec.core, config.tokens?.typography);
+      const typoViolations = evaluateTypographyToken(dec.core, config2.tokens?.typography);
       typoViolations.forEach((v) => {
-        if (config.rules?.[v.rule] !== "off") {
+        if (config2.rules?.[v.rule] !== "off") {
           addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
         }
       });
-      const geoViolations = evaluateGeometryToken(dec.core, config.tokens?.geometry, isCheckbox);
+      const geoViolations = evaluateGeometryToken(dec.core, config2.tokens?.geometry, isCheckbox);
       geoViolations.forEach((v) => {
-        if (config.rules?.[v.rule] !== "off") {
+        if (config2.rules?.[v.rule] !== "off") {
           addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
         }
       });
-      const colorViolations = evaluateColorToken(dec.core, config.tokens?.colors);
+      const colorViolations = evaluateColorToken(dec.core, effectiveColorConfig);
       colorViolations.forEach((v) => {
-        if (config.rules?.[v.rule] !== "off") {
+        if (config2.rules?.[v.rule] !== "off") {
           addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
         }
       });
-      if (isButton && config.rules?.["control-height-max"] !== "off") {
+      if (isButton && config2.rules?.["control-height-max"] !== "off") {
         if (/\bh-(?:10|11|12|14|16|\[(?:3[8-9]|[4-9][0-9]|[1-9][0-9]{2,})px\])\b/.test(dec.core)) {
           addViolation(
             filePath,
@@ -1400,7 +1590,7 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
           );
         }
       }
-      if (isCompactElement && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+      if (isCompactElement && config2.rules?.["no-wrapping-compact-elements"] !== "off") {
         if (dec.core === "flex-wrap" || dec.core === "whitespace-normal" || dec.core === "whitespace-pre-wrap") {
           addViolation(
             filePath,
@@ -1414,7 +1604,7 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
       }
     });
   });
-  if (tagName === "TableHead" && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+  if (tagName === "TableHead" && config2.rules?.["no-wrapping-compact-elements"] !== "off") {
     const rawClass = attributes.className?.rawText || "";
     if (/\b(?:flex-wrap|whitespace-normal|whitespace-pre-wrap)\b/.test(rawClass)) {
       addViolation(
@@ -1430,7 +1620,9 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
 }
 
 // src/rules/regex-rules.ts
-function runRegexRules(content, filePath, addViolation, config) {
+function runRegexRules(content, filePath, addViolation, config2) {
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || normPath.includes("globals.css") || normPath.includes("index.css") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
   const lines = content.split("\n");
   const unicodeArrowRegex = /[\u2190-\u2199\u21D0-\u21D9\u2794-\u27BF\u21B0-\u21B5\u27F5-\u27FF]|(?:->|<-)/gu;
   const hexColorRegex = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
@@ -1447,7 +1639,7 @@ function runRegexRules(content, filePath, addViolation, config) {
       return;
     }
     const codeOnlyLine = line.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
-    if (config.rules?.["no-text-arrows"] !== "off") {
+    if (config2.rules?.["no-text-arrows"] !== "off") {
       unicodeArrowRegex.lastIndex = 0;
       let match;
       while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
@@ -1461,7 +1653,7 @@ function runRegexRules(content, filePath, addViolation, config) {
         );
       }
     }
-    if (config.rules?.["no-backdrop-blur"] !== "off") {
+    if (config2.rules?.["no-backdrop-blur"] !== "off") {
       if (!codeOnlyLine.includes("no-backdrop-blur")) {
         backdropBlurRegex.lastIndex = 0;
         let match;
@@ -1477,12 +1669,12 @@ function runRegexRules(content, filePath, addViolation, config) {
         }
       }
     }
-    if (config.rules?.["no-raw-hex-colors"] !== "off") {
+    if (config2.rules?.["no-raw-hex-colors"] !== "off") {
       hexColorRegex.lastIndex = 0;
       let match;
       while ((match = hexColorRegex.exec(codeOnlyLine)) !== null) {
         const hex = match[0];
-        if (!codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
+        if (!isPrimitivesFile && !codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
           addViolation(
             filePath,
             lineNum,
@@ -1494,7 +1686,7 @@ function runRegexRules(content, filePath, addViolation, config) {
         }
       }
     }
-    if (config.rules?.["no-chip-colored-buttons"] !== "off") {
+    if (config2.rules?.["no-chip-colored-buttons"] !== "off") {
       buttonOpenRegex.lastIndex = 0;
       if (buttonOpenRegex.test(line)) {
         inButtonTag = true;
@@ -1539,7 +1731,7 @@ function isInsidePythonString(line, index) {
   }
   return inSingle || inDouble;
 }
-function runPythonRules(content, filePath, addViolation, config) {
+function runPythonRules(content, filePath, addViolation, config2) {
   const lines = content.split("\n");
   const isPython = filePath.endsWith(".py");
   const isCssOrHtml = filePath.endsWith(".css") || filePath.endsWith(".html") || filePath.endsWith(".jinja") || filePath.endsWith(".jinja2");
@@ -1555,7 +1747,7 @@ function runPythonRules(content, filePath, addViolation, config) {
     const codeOnlyLine = isPython ? line.replace(/#.*$/, "") : line.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
     if (line.includes("<style>")) inStyleBlock = true;
     if (line.includes("</style>")) inStyleBlock = false;
-    if (config.rules?.["no-text-arrows"] !== "off") {
+    if (config2.rules?.["no-text-arrows"] !== "off") {
       unicodeArrowRegex.lastIndex = 0;
       let match;
       while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
@@ -1579,7 +1771,7 @@ function runPythonRules(content, filePath, addViolation, config) {
         const val = parseFloat(fontSizeMatch[1]);
         const unit = fontSizeMatch[2].toLowerCase();
         const px = unit === "rem" ? val * 16 : val;
-        if (px < 14 && config.rules?.["font-size-min"] !== "off") {
+        if (px < 14 && config2.rules?.["font-size-min"] !== "off") {
           addViolation(
             filePath,
             lineNum,
@@ -1588,7 +1780,7 @@ function runPythonRules(content, filePath, addViolation, config) {
             `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) is smaller than 14px. Primary body font must strictly be standard 14px.`,
             line
           );
-        } else if (px > 32 && config.rules?.["font-size-max"] !== "off") {
+        } else if (px > 32 && config2.rules?.["font-size-max"] !== "off") {
           addViolation(
             filePath,
             lineNum,
@@ -1600,7 +1792,7 @@ function runPythonRules(content, filePath, addViolation, config) {
         }
       }
       const fontWeightMatch = line.match(/font-weight\s*:\s*([0-9]{3}|bold|bolder|semibold)/i);
-      if (fontWeightMatch && config.rules?.["font-weight-max"] !== "off") {
+      if (fontWeightMatch && config2.rules?.["font-weight-max"] !== "off") {
         const rawWeight = fontWeightMatch[1].toLowerCase();
         const weightNum = parseInt(rawWeight, 10);
         if (weightNum > 500 || ["bold", "bolder", "semibold"].includes(rawWeight)) {
@@ -1614,7 +1806,7 @@ function runPythonRules(content, filePath, addViolation, config) {
           );
         }
       }
-      if (config.rules?.["no-backdrop-blur"] !== "off" && /backdrop-filter\s*:\s*blur/i.test(line)) {
+      if (config2.rules?.["no-backdrop-blur"] !== "off" && /backdrop-filter\s*:\s*blur/i.test(line)) {
         addViolation(
           filePath,
           lineNum,
@@ -1625,7 +1817,7 @@ function runPythonRules(content, filePath, addViolation, config) {
         );
       }
     }
-    if (config.rules?.["no-raw-hex-colors"] !== "off") {
+    if (config2.rules?.["no-raw-hex-colors"] !== "off") {
       hexColorRegex.lastIndex = 0;
       let match;
       while ((match = hexColorRegex.exec(line)) !== null) {
@@ -1646,20 +1838,20 @@ function runPythonRules(content, filePath, addViolation, config) {
 }
 
 // src/rules/runner.ts
-async function runDseScan(config, cwd = process.cwd()) {
-  let targetDir = import_node_path4.default.resolve(cwd, config.targetDir || "src");
+async function runDseScan(config2, cwd = process.cwd()) {
+  let targetDir = import_node_path4.default.resolve(cwd, config2.targetDir || "src");
   if (!import_node_fs4.default.existsSync(targetDir)) {
     targetDir = cwd;
   }
-  const includePatterns = config.include || ["**/*.{tsx,jsx,ts,js}"];
-  const excludePatterns = config.exclude || [
+  const includePatterns = config2.include || ["**/*.{tsx,jsx,ts,js}"];
+  const excludePatterns = config2.exclude || [
     "**/node_modules/**",
     "**/.next/**",
     "**/public/**",
     "**/.git/**"
   ];
   const inventoryCounts = {};
-  const inventoryDef = config.components?.requiredInventory || [];
+  const inventoryDef = config2.components?.requiredInventory || [];
   inventoryDef.forEach((comp) => {
     inventoryCounts[comp.name] = 0;
   });
@@ -1684,7 +1876,7 @@ async function runDseScan(config, cwd = process.cwd()) {
     const key = `${normFile}:${line}:${rule}`;
     if (seenViolationKeys.has(key)) return;
     seenViolationKeys.add(key);
-    const severity = config.rules?.[rule] || "error";
+    const severity = config2.rules?.[rule] || "error";
     if (severity === "off") return;
     violations.push({
       file: normFile,
@@ -1712,15 +1904,15 @@ async function runDseScan(config, cwd = process.cwd()) {
       });
       const sourceFile = parseTsx(filePath, content);
       const fileImports = getFileImports(sourceFile);
-      runAstRules(sourceFile, filePath, addViolation, fileImports, config);
-      runRegexRules(content, filePath, addViolation, config);
+      runAstRules(sourceFile, filePath, addViolation, fileImports, config2);
+      runRegexRules(content, filePath, addViolation, config2);
     } else if (isPythonOrTemplate) {
-      runPythonRules(content, filePath, addViolation, config);
+      runPythonRules(content, filePath, addViolation, config2);
     } else {
-      runRegexRules(content, filePath, addViolation, config);
+      runRegexRules(content, filePath, addViolation, config2);
     }
   }
-  if (scannedJsxFiles && inventoryDef.length > 0 && config.rules?.["component-inventory-active"] !== "off") {
+  if (scannedJsxFiles && inventoryDef.length > 0 && config2.rules?.["component-inventory-active"] !== "off") {
     inventoryDef.forEach((comp) => {
       const count = inventoryCounts[comp.name] || 0;
       if (count === 0) {
@@ -1756,734 +1948,239 @@ async function runDseScan(config, cwd = process.cwd()) {
   };
 }
 
-// src/formatters/stylish.ts
-var import_picocolors = __toESM(require("picocolors"), 1);
-function formatStylish(result) {
-  const output = [];
-  output.push("");
-  output.push(import_picocolors.default.bold(import_picocolors.default.cyan("========================================================")));
-  output.push(import_picocolors.default.bold(import_picocolors.default.cyan("       DESIGN SYSTEM ENFORCER (DSE) - SCAN REPORT       ")));
-  output.push(import_picocolors.default.bold(import_picocolors.default.cyan("========================================================")));
-  output.push(`Scanned ${import_picocolors.default.bold(result.scannedFilesCount)} files.`);
-  output.push("");
-  if (Object.keys(result.componentInventory).length > 0) {
-    output.push(import_picocolors.default.bold(import_picocolors.default.dim("--- Design System Components Inventory ---")));
-    for (const [name, info] of Object.entries(result.componentInventory)) {
-      const paddedName = `<${name}`.padEnd(22) + ">";
-      if (info.active) {
-        output.push(`  \u2022 ${import_picocolors.default.white(paddedName)} : ${import_picocolors.default.green("\u2714 active")} (${info.fileCount} files)`);
-      } else {
-        output.push(`  \u2022 ${import_picocolors.default.white(paddedName)} : ${import_picocolors.default.red("\u2716 UNUSED / DEAD COMPONENT")}`);
-      }
+// src/doctor/index.ts
+function computeDoctorScore(result) {
+  const categoryViolations = {
+    typography: 0,
+    geometry: 0,
+    components: 0,
+    colors: 0,
+    wrapping: 0,
+    tables: 0
+  };
+  const fileCountMap = {};
+  result.violations.forEach((v) => {
+    fileCountMap[v.file] = (fileCountMap[v.file] || 0) + 1;
+    if (v.rule.startsWith("font-") || v.rule.includes("text-size") || v.rule.includes("uppercase")) {
+      categoryViolations.typography++;
+    } else if (v.rule.includes("wrapping")) {
+      categoryViolations.wrapping++;
+    } else if (v.rule.startsWith("control-") || v.rule.startsWith("corner-radius")) {
+      categoryViolations.geometry++;
+    } else if (v.rule.includes("color") || v.rule.includes("gradient") || v.rule.includes("blur")) {
+      categoryViolations.colors++;
+    } else if (v.rule.startsWith("table-")) {
+      categoryViolations.tables++;
+    } else {
+      categoryViolations.components++;
     }
-    output.push("");
+  });
+  const filesCount = Math.max(1, result.scannedFilesCount || 1);
+  function calcScore(violations) {
+    const penaltyPerViolation = 100 / (filesCount * 2);
+    return Math.max(0, Math.round(100 - violations * penaltyPerViolation));
   }
-  if (result.violations.length > 0) {
-    output.push(import_picocolors.default.bold(import_picocolors.default.red(`Found ${result.errorCount} error(s) and ${result.warningCount} warning(s):`)));
-    output.push("");
-    const grouped = {};
-    for (const v of result.violations) {
-      if (!grouped[v.file]) grouped[v.file] = [];
-      grouped[v.file].push(v);
-    }
-    for (const [file, items] of Object.entries(grouped)) {
-      output.push(import_picocolors.default.underline(import_picocolors.default.bold(file)));
-      for (const item of items) {
-        const badge = item.severity === "error" ? import_picocolors.default.red("error") : import_picocolors.default.yellow("warning");
-        output.push(
-          `  ${import_picocolors.default.dim(`${item.line}:${item.col}`)}  ${badge}  ${item.message}  ${import_picocolors.default.dim(`(${item.rule})`)}`
-        );
-        if (item.snippet) {
-          output.push(`    ${import_picocolors.default.dim(">")} ${import_picocolors.default.italic(item.snippet)}`);
-        }
-      }
-      output.push("");
-    }
-    output.push(
-      import_picocolors.default.bold(
-        import_picocolors.default.red(
-          `\u2716 Failed with ${result.errorCount} error(s). Please resolve all Design System Enforcer violations before committing or deploying.`
-        )
-      )
-    );
-  } else {
-    output.push(import_picocolors.default.bold(import_picocolors.default.green("\u2714 PERFECT! All files strictly comply with the Design System Enforcer rules.")));
-  }
-  output.push("");
-  return output.join("\n");
+  const categories = [
+    { name: "Typography Scale", category: "typography", violations: categoryViolations.typography, score: calcScore(categoryViolations.typography) },
+    { name: "Geometry & Radii", category: "geometry", violations: categoryViolations.geometry, score: calcScore(categoryViolations.geometry) },
+    { name: "Wrap Integrity", category: "wrapping", violations: categoryViolations.wrapping, score: calcScore(categoryViolations.wrapping) },
+    { name: "Component Inventory", category: "components", violations: categoryViolations.components, score: calcScore(categoryViolations.components) },
+    { name: "Color Purity", category: "colors", violations: categoryViolations.colors, score: calcScore(categoryViolations.colors) },
+    { name: "Table Invariants", category: "tables", violations: categoryViolations.tables, score: calcScore(categoryViolations.tables) }
+  ];
+  const totalScore = Math.round(categories.reduce((acc, c) => acc + c.score, 0) / categories.length);
+  let grade = "F";
+  if (totalScore >= 98) grade = "A+";
+  else if (totalScore >= 90) grade = "A";
+  else if (totalScore >= 80) grade = "B";
+  else if (totalScore >= 70) grade = "C";
+  else if (totalScore >= 60) grade = "D";
+  const fileBreakdown = Object.entries(fileCountMap).map(([file, violations]) => ({ file, violations })).sort((a, b) => b.violations - a.violations).slice(0, 5);
+  return {
+    overallScore: totalScore,
+    grade,
+    scannedFiles: filesCount,
+    totalViolations: result.violations.length,
+    categories,
+    fileBreakdown
+  };
 }
 
-// src/formatters/json.ts
-function formatJson(result) {
-  return JSON.stringify(result, null, 2);
-}
-
-// src/scaffold/index.ts
+// src/fixer/index.ts
 var import_node_fs5 = __toESM(require("fs"), 1);
 var import_node_path5 = __toESM(require("path"), 1);
-
-// src/scaffold/templates/tokens.ts
-var tokensTemplate = `/**
- * Design System Tokens
- * All colors are driven by CSS variables in HSL format for instant theme customization.
- * AI Agents or developers can update these values in globals.css.
- */
-
-export const typographyTokens = {
-  fontFamily: {
-    sans: ["var(--font-sans)", "system-ui", "-apple-system", "sans-serif"],
-    mono: ["var(--font-mono)", "monospace"],
-  },
-  fontSize: {
-    xs: "12px",
-    sm: "14px", // Primary body font standard
-    base: "16px", // Large body font
-    lg: "18px",
-    xl: "20px",
-    "2xl": "24px",
-    "3xl": "30px", // Maximum heading cap
-  },
-  fontWeight: {
-    regular: "400",
-    medium: "500", // Standard for buttons and interactive controls
-    semibold: "600",
-  },
-  lineHeight: {
-    tight: "1.25",
-    snug: "1.375",
-    normal: "1.5",
-    relaxed: "1.625",
-  },
-} as const;
-
-export const geometryTokens = {
-  radius: {
-    none: "0px",
-    checkbox: "4px", // Strictly 4px for checkboxes only
-    sm: "8px",
-    md: "8px", // Standard for buttons, inputs, dropdowns, tabs
-    lg: "12px", // Standard for cards and modal containers
-    xl: "16px",
-    full: "9999px",
-  },
-  controlHeight: {
-    sm: "30px",
-    md: "36px", // Standard control height (buttons, inputs, tabs)
-    lg: "40px",
-  },
-  checkboxSize: "20px", // Standard size-5
-} as const;
-`;
-
-// src/scaffold/templates/css.ts
-var cssTemplate = `@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  :root {
-    /* -------------------------------------------------------------------------
-     * Design System Color Tokens (HSL)
-     * Tip for AI Agents: Modify HSL values here to rebrand or customize themes!
-     * ------------------------------------------------------------------------- */
-    --background: 0 0% 100%;             /* White (#ffffff) */
-    --foreground: 0 0% 11%;              /* Text Primary (#1c1c1c) */
-
-    --muted: 0 0% 96%;                   /* Neutral 100 (#f5f5f5) */
-    --muted-foreground: 0 0% 45%;        /* Text Secondary (#737373) */
-
-    --border: 0 0% 90%;                  /* Stroke Default (#e5e5e5) */
-    --input: 0 0% 90%;                   /* Input Stroke */
-
-    --primary: 0 0% 9%;                  /* Brand Dark (#171717) */
-    --primary-foreground: 0 0% 98%;
-
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 9%;
-
-    --accent: 0 0% 96%;
-    --accent-foreground: 0 0% 9%;
-
-    /* Semantic Status Tokens */
-    --success: 142 71% 45%;              /* Emerald */
-    --success-foreground: 0 0% 100%;
-
-    --warning: 38 92% 50%;               /* Amber */
-    --warning-foreground: 0 0% 100%;
-
-    --destructive: 0 84% 60%;            /* Red */
-    --destructive-foreground: 0 0% 100%;
-
-    /* Geometry Tokens */
-    --radius-sm: 8px;
-    --radius-md: 8px;                    /* Standard 8px for controls */
-    --radius-lg: 12px;                   /* Standard 12px for cards */
-    --control-height: 36px;              /* Standard 36px */
-  }
-
-  .dark {
-    --background: 0 0% 9%;
-    --foreground: 0 0% 98%;
-
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 64%;
-
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 0 0% 98%;
-
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 98%;
-  }
-
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-size: 14px;
-    line-height: 1.5;
-  }
-}
-`;
-
-// src/scaffold/templates/components.ts
-var buttonTemplate = `import React from "react";
-
-export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "ghost";
-  size?: "default" | "sm" | "icon";
-  children?: React.ReactNode;
-}
-
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = "", variant = "primary", size = "default", children, ...props }, ref) => {
-    // Standard 36px height, 8px radius, font-medium, strictly neutral palette
-    const baseClasses =
-      "inline-flex items-center justify-center font-medium text-sm rounded-md whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 select-none cursor-pointer";
-
-
-    const variantClasses = {
-      primary: "bg-neutral-900 text-white hover:bg-neutral-800 shadow-2xs",
-      secondary: "bg-neutral-100 text-neutral-900 hover:bg-neutral-200",
-      outline: "border border-neutral-200 bg-white text-neutral-900 hover:bg-neutral-50 shadow-2xs",
-      ghost: "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900",
-    }[variant];
-
-    const sizeClasses = {
-      default: "h-[36px] min-h-[36px] px-3.5 gap-2",
-      sm: "h-[30px] min-h-[30px] px-2.5 text-sm gap-1.5",
-      icon: "size-9 min-h-[36px] min-w-[36px] p-0",
-    }[size];
-
-    return (
-      <button ref={ref} className={\`\${baseClasses} \${variantClasses} \${sizeClasses} \${className}\`} {...props}>
-        {children}
-      </button>
-    );
-  }
-);
-Button.displayName = "Button";
-`;
-var chipTemplate = `import React from "react";
-
-export interface ChipProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "neutral" | "success" | "warning" | "error" | "outline";
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}
-
-export const Chip: React.FC<ChipProps> = ({
-  variant = "neutral",
-  icon,
-  children,
-  className = "",
-  ...props
-}) => {
-  // Standard 36px height, 8px radius, 14px typography
-  const baseClasses =
-    "inline-flex items-center h-[36px] min-h-[36px] px-3 rounded-md text-sm font-medium whitespace-nowrap shrink-0 gap-1.5 select-none";
-
-
-  const variantClasses = {
-    neutral: "bg-neutral-100 text-neutral-800 border border-neutral-200",
-    success: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-    warning: "bg-amber-50 text-amber-700 border border-amber-200",
-    error: "bg-red-50 text-red-700 border border-red-200",
-    outline: "bg-white text-neutral-700 border border-neutral-200",
-  }[variant];
-
-  return (
-    <div className={\`\${baseClasses} \${variantClasses} \${className}\`} {...props}>
-      {icon && <span className="shrink-0">{icon}</span>}
-      <span>{children}</span>
-    </div>
-  );
-};
-`;
-var inputTemplate = `import React from "react";
-
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  icon?: React.ReactNode;
-}
-
-export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className = "", icon, type = "text", ...props }, ref) => {
-    return (
-      <div className="relative flex items-center w-full">
-        {icon && <div className="absolute left-3 text-neutral-400 pointer-events-none">{icon}</div>}
-        <input
-          ref={ref}
-          type={type}
-          className={\`w-full h-[36px] min-h-[36px] \${icon ? "pl-9" : "px-3"} pr-3 rounded-md border border-neutral-200 bg-white text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent transition-colors disabled:opacity-50 \${className}\`}
-          {...props}
-        />
-      </div>
-    );
-  }
-);
-Input.displayName = "Input";
-`;
-var dropdownTemplate = `import React, { useState, useRef, useEffect } from "react";
-
-export interface DropdownOption {
-  value: string;
-  label: string;
-  icon?: React.ReactNode;
-  disabled?: boolean;
-}
-
-export interface DropdownProps {
-  options: DropdownOption[];
-  value?: string;
-  onChange?: (value: string) => void;
-  placeholder?: string;
-  className?: string;
-  disabled?: boolean;
-}
-
-export const Dropdown: React.FC<DropdownProps> = ({
-  options,
-  value,
-  onChange,
-  placeholder = "Select option...",
-  className = "",
-  disabled = false,
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const selected = options.find((o) => o.value === value);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+async function runDseFix(config2, cwd = process.cwd()) {
+  const scanResult = await runDseScan(config2, cwd);
+  const violationsByFile = {};
+  scanResult.violations.forEach((v) => {
+    if (!violationsByFile[v.file]) {
+      violationsByFile[v.file] = [];
+    }
+    violationsByFile[v.file].push(v);
+  });
+  const details = [];
+  let totalModifications = 0;
+  for (const [relPath, violations] of Object.entries(violationsByFile)) {
+    const fullPath = import_node_path5.default.resolve(cwd, relPath);
+    if (!import_node_fs5.default.existsSync(fullPath)) continue;
+    let content = import_node_fs5.default.readFileSync(fullPath, "utf-8");
+    const originalContent = content;
+    const fileFixes = [];
+    if (violations.some((v) => v.rule === "no-wrapping-compact-elements")) {
+      const before = content;
+      content = content.replace(/(<(?:Button|IconButton|Chip|Badge)\b[^>]*className=["'`][^"'`]*?)\b(?:whitespace-normal|whitespace-pre-wrap|flex-wrap)\b([^"'`]*?["'`])/g, (match, prefix, suffix) => {
+        return `${prefix}whitespace-nowrap shrink-0${suffix}`;
+      });
+      if (before !== content) {
+        fileFixes.push("Replaced wrapping classes with 'whitespace-nowrap shrink-0' on compact controls");
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  return (
-    <div ref={containerRef} className={\`relative inline-block w-full min-w-[140px] \${className}\`}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full h-[36px] min-h-[36px] px-3 rounded-md border border-neutral-200 bg-white text-sm text-neutral-900 flex items-center justify-between gap-2 hover:bg-neutral-50 transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-400 disabled:opacity-50"
-      >
-        <span className="truncate">{selected ? selected.label : placeholder}</span>
-        <svg className="w-4 h-4 text-neutral-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-60 overflow-y-auto py-1">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              disabled={option.disabled}
-              onClick={() => {
-                onChange?.(option.value);
-                setIsOpen(false);
-              }}
-              className={\`w-full px-3 py-2 text-sm text-left flex items-center gap-2 hover:bg-neutral-100 transition-colors \${option.value === value ? "bg-neutral-50 font-medium text-neutral-900" : "text-neutral-700"} \${option.disabled ? "opacity-50 cursor-not-allowed" : ""}\`}
-            >
-              {option.icon}
-              <span className="truncate">{option.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-`;
-var tableTemplate = `import React from "react";
-
-export const Table = React.forwardRef<HTMLTableElement, React.HTMLAttributes<HTMLTableElement>>(
-  ({ className = "", children, ...props }, ref) => (
-    <div className="w-full rounded-md border border-neutral-200 bg-white shadow-2xs overflow-hidden">
-      <div className="overflow-x-auto">
-        <table ref={ref} className={\`w-full text-sm text-left border-collapse \${className}\`} {...props}>
-          {children}
-        </table>
-      </div>
-    </div>
-  )
-);
-Table.displayName = "Table";
-
-export const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className = "", children, ...props }, ref) => (
-    <thead ref={ref} className={\`bg-neutral-50/80 border-b border-neutral-200 text-neutral-900 font-medium \${className}\`} {...props}>
-      {children}
-    </thead>
-  )
-);
-TableHeader.displayName = "TableHeader";
-
-export const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className = "", children, ...props }, ref) => (
-    <tbody ref={ref} className={\`divide-none bg-white \${className}\`} {...props}>
-      {children}
-    </tbody>
-  )
-);
-TableBody.displayName = "TableBody";
-
-export const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
-  ({ className = "", children, ...props }, ref) => (
-    <tr ref={ref} className={\`border-b border-neutral-200 transition-colors hover:bg-neutral-50/60 last:border-b-0 \${className}\`} {...props}>
-      {children}
-    </tr>
-  )
-);
-TableRow.displayName = "TableRow";
-
-export interface TableHeadProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
-  icon?: React.ReactNode;
-  resizable?: boolean;
-}
-
-export const TableHead = React.forwardRef<HTMLTableCellElement, TableHeadProps>(
-  ({ className = "", icon, resizable = true, children, ...props }, ref) => (
-    <th
-      ref={ref}
-      className={\`h-[36px] px-4 text-left font-medium text-sm text-neutral-900 select-none align-middle relative whitespace-nowrap \${className}\`}
-      {...props}
-    >
-      <div className="flex items-center gap-2">
-        {icon && <span className="text-neutral-500 shrink-0">{icon}</span>}
-        <span className="whitespace-nowrap">{children}</span>
-      </div>
-    </th>
-  )
-);
-TableHead.displayName = "TableHead";
-
-export const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
-  ({ className = "", children, ...props }, ref) => (
-    <td ref={ref} className={\`px-4 py-2.5 align-middle text-sm text-neutral-900 \${className}\`} {...props}>
-      {children}
-    </td>
-  )
-);
-TableCell.displayName = "TableCell";
-`;
-var tabsTemplate = `import React from "react";
-
-export interface TabItem {
-  id: string;
-  label: string;
-  icon?: React.ReactNode;
-  badge?: React.ReactNode;
-  count?: number;
-  disabled?: boolean;
-}
-
-export interface TabsProps {
-  items: TabItem[];
-  activeId: string;
-  onChange: (id: string) => void;
-  className?: string;
-}
-
-export const Tabs: React.FC<TabsProps> = ({ items, activeId, onChange, className = "" }) => {
-  // Standard 36px height, 8px radius, font-medium
-  return (
-    <div className={\`inline-flex h-[36px] min-h-[36px] items-center rounded-md bg-neutral-100 p-1 text-neutral-600 \${className}\`}>
-      {items.map((tab) => {
-        const isActive = tab.id === activeId;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            disabled={tab.disabled}
-            onClick={() => onChange(tab.id)}
-            className={\`inline-flex h-[28px] items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium whitespace-nowrap shrink-0 transition-all select-none \${
-              isActive
-                ? "bg-white text-neutral-900 shadow-2xs"
-                : "text-neutral-600 hover:text-neutral-900 hover:bg-neutral-200/50"
-            } \${tab.disabled ? "opacity-50 cursor-not-allowed" : ""}\`}
-          >
-            {tab.icon && <span className="shrink-0">{tab.icon}</span>}
-            <span>{tab.label}</span>
-            {tab.count !== undefined && (
-              <span className="text-xs px-1.5 py-0.5 rounded-full bg-neutral-200 text-neutral-700">
-                {tab.count}
-              </span>
-            )}
-            {tab.badge}
-          </button>
-        );
-      })}
-    </div>
-  );
-};
-`;
-var cardTemplate = `import React from "react";
-
-export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className = "", children, ...props }, ref) => (
-    // Standard 12px corner radius (rounded-lg) for main content cards and containers
-    <div
-      ref={ref}
-      className={\`rounded-lg border border-neutral-200 bg-white p-5 shadow-xs text-neutral-900 \${className}\`}
-      {...props}
-    >
-      {children}
-    </div>
-  )
-);
-Card.displayName = "Card";
-`;
-var checkboxTemplate = `import React from "react";
-
-export interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> {
-  label?: string;
-}
-
-export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className = "", label, id, ...props }, ref) => {
-    return (
-      <label htmlFor={id} className="inline-flex items-center gap-2 cursor-pointer select-none">
-        <input
-          ref={ref}
-          id={id}
-          type="checkbox"
-          // Strictly 20px (size-5) and 4px radius (rounded-xs / rounded-[4px])
-          className={\`size-5 rounded-xs border border-neutral-300 text-neutral-900 focus:ring-2 focus:ring-neutral-400 focus:ring-offset-1 transition-colors cursor-pointer \${className}\`}
-          {...props}
-        />
-        {label && <span className="text-sm font-medium text-neutral-900">{label}</span>}
-      </label>
-    );
-  }
-);
-Checkbox.displayName = "Checkbox";
-`;
-var skeletonTemplate = `import React from "react";
-
-export const Skeleton: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
-  className = "",
-  ...props
-}) => {
-  return (
-    <div
-      className={\`animate-pulse rounded-md bg-neutral-200/70 \${className}\`}
-      {...props}
-    />
-  );
-};
-`;
-
-// src/scaffold/index.ts
-var COMPONENT_TEMPLATES = {
-  button: { filename: "button.tsx", content: buttonTemplate },
-  chip: { filename: "chip.tsx", content: chipTemplate },
-  badge: { filename: "badge.tsx", content: chipTemplate },
-  input: { filename: "input.tsx", content: inputTemplate },
-  dropdown: { filename: "dropdown.tsx", content: dropdownTemplate },
-  table: { filename: "table.tsx", content: tableTemplate },
-  tabs: { filename: "tabs.tsx", content: tabsTemplate },
-  card: { filename: "card.tsx", content: cardTemplate },
-  checkbox: { filename: "checkbox.tsx", content: checkboxTemplate },
-  skeleton: { filename: "skeleton.tsx", content: skeletonTemplate }
-};
-function scaffoldConfig(cwd = process.cwd(), preset = "berserk") {
-  if (preset === "python") {
-    const jsonPath = import_node_path5.default.resolve(cwd, "dse.config.json");
-    if (import_node_fs5.default.existsSync(jsonPath)) return jsonPath;
-    const content2 = JSON.stringify(
-      {
-        preset: "python",
-        targetDir: ".",
-        include: ["**/*.{py,html,jinja,jinja2,css}"],
-        exclude: [
-          "**/.venv/**",
-          "**/venv/**",
-          "**/__pycache__/**",
-          "**/.pytest_cache/**",
-          "**/.git/**"
-        ]
-      },
-      null,
-      2
-    ) + "\n";
-    import_node_fs5.default.writeFileSync(jsonPath, content2, "utf-8");
-    return jsonPath;
-  }
-  const configPath = import_node_path5.default.resolve(cwd, "dse.config.js");
-  if (import_node_fs5.default.existsSync(configPath)) {
-    return configPath;
-  }
-  const content = `import { defineConfig } from "design-system-enforcer";
-
-export default defineConfig({
-  preset: "${preset}",
-  targetDir: "src",
-  include: ["**/*.{tsx,jsx,ts,js}"],
-  exclude: [
-    "**/node_modules/**",
-    "**/.next/**",
-    "**/public/**",
-    "**/.git/**",
-    "src/lib/tokens.ts",
-    "src/app/globals.css",
-    "src/components/ui/button.tsx",
-    "src/components/ui/chip.tsx",
-    "src/components/ui/card.tsx",
-    "src/components/ui/input.tsx",
-    "src/components/ui/table.tsx",
-    "src/components/ui/tabs.tsx",
-    "src/components/ui/dropdown.tsx",
-    "src/components/ui/checkbox.tsx",
-    "src/components/ui/skeleton.tsx",
-  ],
-});
-`;
-  import_node_fs5.default.writeFileSync(configPath, content, "utf-8");
-  return configPath;
-}
-function scaffoldTokens(cwd = process.cwd()) {
-  const libDir = import_node_path5.default.resolve(cwd, "src/lib");
-  const appDir = import_node_path5.default.resolve(cwd, "src/app");
-  if (!import_node_fs5.default.existsSync(libDir)) import_node_fs5.default.mkdirSync(libDir, { recursive: true });
-  if (!import_node_fs5.default.existsSync(appDir)) import_node_fs5.default.mkdirSync(appDir, { recursive: true });
-  const tokensPath = import_node_path5.default.join(libDir, "tokens.ts");
-  if (!import_node_fs5.default.existsSync(tokensPath)) {
-    import_node_fs5.default.writeFileSync(tokensPath, tokensTemplate, "utf-8");
-  }
-  const cssPath = import_node_path5.default.join(appDir, "globals.css");
-  if (!import_node_fs5.default.existsSync(cssPath)) {
-    import_node_fs5.default.writeFileSync(cssPath, cssTemplate, "utf-8");
-  }
-  return { tokensPath, cssPath };
-}
-function scaffoldComponent(componentName, cwd = process.cwd()) {
-  const key = componentName.toLowerCase();
-  const template = COMPONENT_TEMPLATES[key];
-  if (!template) {
-    return null;
-  }
-  const uiDir = import_node_path5.default.resolve(cwd, "src/components/ui");
-  if (!import_node_fs5.default.existsSync(uiDir)) {
-    import_node_fs5.default.mkdirSync(uiDir, { recursive: true });
-  }
-  const targetPath = import_node_path5.default.join(uiDir, template.filename);
-  if (!import_node_fs5.default.existsSync(targetPath)) {
-    import_node_fs5.default.writeFileSync(targetPath, template.content, "utf-8");
-  }
-  return targetPath;
-}
-function scaffoldAllPrimitives(cwd = process.cwd()) {
-  const created = [];
-  const { tokensPath, cssPath } = scaffoldTokens(cwd);
-  created.push(tokensPath, cssPath);
-  for (const name of Object.keys(COMPONENT_TEMPLATES)) {
-    const filePath = scaffoldComponent(name, cwd);
-    if (filePath && !created.includes(filePath)) {
-      created.push(filePath);
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<button>"))) {
+      const before = content;
+      content = content.replace(/<button(\s|>)/g, "<Button$1");
+      content = content.replace(/<\/button>/g, "</Button>");
+      if (before !== content) {
+        if (!content.includes("import { Button }") && !content.includes("import Button") && !relPath.includes("components/ui/button")) {
+          content = `import { Button } from "@/components/ui/button";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <button> to <Button>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<select>"))) {
+      const before = content;
+      content = content.replace(/<select(\s|>)/g, "<Dropdown$1");
+      content = content.replace(/<\/select>/g, "</Dropdown>");
+      if (before !== content) {
+        if (!content.includes("import { Dropdown }") && !content.includes("import Dropdown") && !relPath.includes("components/ui/dropdown")) {
+          content = `import { Dropdown } from "@/components/ui/dropdown";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <select> to <Dropdown>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-raw-html-elements" && v.message.includes("<textarea>"))) {
+      const before = content;
+      content = content.replace(/<textarea(\s|>)/g, "<Textarea$1");
+      content = content.replace(/<\/textarea>/g, "</Textarea>");
+      if (before !== content) {
+        if (!content.includes("import { Textarea }") && !content.includes("import Textarea") && !relPath.includes("components/ui/textarea")) {
+          content = `import { Textarea } from "@/components/ui/textarea";
+` + content;
+        }
+        fileFixes.push("Upgraded raw <textarea> to <Textarea>");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-arbitrary-text-size")) {
+      const before = content;
+      content = content.replace(/\btext-\[(?:13|13\.5|14|14\.5|15|15\.5)px\]\b/g, "text-sm");
+      content = content.replace(/\btext-\[(?:11|11\.5|12|12\.5)px\]\b/g, "text-xs");
+      content = content.replace(/\btext-\[(?:16|17)px\]\b/g, "text-base");
+      if (before !== content) {
+        fileFixes.push("Standardized arbitrary font sizes to compliant token scales");
+      }
+    }
+    if (violations.some((v) => v.rule === "no-backdrop-blur")) {
+      const before = content;
+      content = content.replace(/\bbackdrop-blur(?:-(?:none|sm|md|lg|xl|2xl|3xl))?\b/g, "");
+      if (before !== content) {
+        fileFixes.push("Removed non-compliant backdrop-blur classes");
+      }
+    }
+    if (content !== originalContent) {
+      import_node_fs5.default.writeFileSync(fullPath, content, "utf-8");
+      totalModifications += fileFixes.length;
+      details.push({
+        file: relPath,
+        fixes: fileFixes
+      });
     }
   }
-  return created;
+  return {
+    filesFixed: details.length,
+    totalModifications,
+    details
+  };
 }
 
-// src/export-rules/index.ts
-function generateMarkdownRules(config) {
-  const minFont = config.tokens?.typography?.minFontSize || "14px";
-  const maxFont = config.tokens?.typography?.maxFontSize || "32px";
-  const maxWeight = config.tokens?.typography?.maxFontWeight ?? 500;
-  const maxControlHeight = config.tokens?.geometry?.maxControlHeight || "36px";
-  return `<!-- BEGIN:design-system-enforcer-rules -->
-# Design System Rules & Constraints (Enforced by DSE)
+// src/guardrails/index.ts
+var import_node_fs6 = __toESM(require("fs"), 1);
+var import_node_path6 = __toESM(require("path"), 1);
+function generateAgentInstructions(config2) {
+  const allowedRadii = config2.tokens?.geometry?.allowedRadii?.join(", ") || "0px, 8px, 12px, 16px, 9999px";
+  const maxControlHeight = config2.tokens?.geometry?.maxControlHeight || 36;
+  const bannedColors = config2.tokens?.colors?.bannedColorFamilies?.join(", ") || "slate, gray, zinc, stone, etc.";
+  return `<!-- BEGIN:DSE-AGENT-RULES -->
+# DESIGN SYSTEM ENFORCER (DSE) - MANDATORY RULES
 
-## Typography & Font Sizing Rules
-- **Primary Body Font**: Always use standard ${minFont} (\`text-sm\`) as the primary body font across all tables, lists, cards, form inputs, dialogs, and buttons.
-- **Large Body Font**: Use 16px (\`text-base\`) for large body text and emphasized copy.
-- **Maximum Heading Size**: Headings must never exceed ${maxFont} (\`text-2xl\`). Headings larger than ${maxFont} (\`text-3xl\`, \`text-4xl\`) are strictly prohibited.
-- **Prohibition on Font Sizes Below ${minFont}**: Font sizes smaller than ${minFont} (e.g. \`text-xs\`, \`12px\`, \`10px\`) are strictly prohibited.
-- **Font Weight Cap**: Standard text and interactive elements must not exceed Medium / ${maxWeight} (\`font-medium\`). \`font-semibold\` or \`font-bold\` are prohibited.
-- **No Uppercase Text**: Disallow \`uppercase\` or \`capitalize\` CSS transforms. Use standard sentence or title case.
+You MUST adhere to these design system invariants for all UI generation:
 
-## UI Iconography & Symbols
-- **No Raw Text Arrows**: Never use raw unicode or ASCII arrows (\u2192, \u2190, \u2191, \u2193, =>, ->). Use design system icon components instead.
-- **No Emojis in UI**: Do NOT use raw emojis in badges, chips, buttons, labels, or table headers.
+1. COMPONENT INVARIANTS:
+   - NEVER use raw HTML: <button>, <select>, <textarea>, <table>, <input type="checkbox">, <input type="radio">.
+   - ALWAYS use standard primitives: <Button>, <Dropdown>, <Textarea>, <Table>, <Checkbox>, <Chip>.
+   - Never create pseudo-chips using raw <div> or <span> with background fills and borders. Use <Chip>.
 
-## Component Design & Primitives
-- **Button Component**: Always use \`<Button>\` from \`@/components/ui/button\`. Raw \`<button>\` HTML elements are strictly prohibited.
-  - Height is strictly standard ${maxControlHeight} (\`h-[36px] min-h-[36px]\`) with 8px corner radius (\`rounded-md\`).
-  - Font weight is strictly \`font-medium\`.
-  - **No Chip-Colored Buttons**: Buttons must NEVER use semantic chip colors (\`bg-emerald-*\`, \`bg-red-*\`, \`variant="danger"\`, \`variant="success"\`).
-- **Chip Component**: \`<Chip>\` from \`@/components/ui/chip\` is the single source of truth for all tags, statuses, pills, and badges. Height is strictly standard ${maxControlHeight} with 8px radius.
-  - **No Pseudo-Chips**: Never use raw \`<span>\` or \`<div>\` elements styled with fills and rounded corners to imitate chips.
-- **Input Component**: Always use \`<Input>\` from \`@/components/ui/input\`. Raw \`<input type="text">\` is strictly prohibited.
-- **Dropdown Component**: Always use \`<Dropdown>\` from \`@/components/ui/dropdown\` instead of raw \`<select>\`.
-- **Checkbox Component**: Strictly 20px dimension (\`size-5\`) and 4px corner radius (\`rounded-xs\`). 4px radius is strictly reserved for checkboxes only.
-- **Cards & Containers**: Main content cards must strictly use 12px corner radius (\`rounded-lg\`).
+2. WRAP INTEGRITY (COMPACT ELEMENTS):
+   - Interactive compact elements (<Button>, <Chip>, <Badge>, <TableHead>, tabs) MUST NOT wrap text.
+   - ALWAYS include 'whitespace-nowrap shrink-0' on compact interactive components.
 
-## Table Component Rules
-- **Mandatory Table Suite**: Always use \`<Table>\`, \`<TableHeader>\`, \`<TableHead>\`, \`<TableBody>\`, \`<TableRow>\`, and \`<TableCell>\` from \`@/components/ui/table\`. Raw HTML table elements (\`<table>\`, \`<tr>\`, \`<td>\`) are strictly prohibited.
-- **Mandatory TableHead Icons**: Every column header (\`<TableHead>\`) must provide an icon component via the \`icon\` prop (\`icon={<MailIcon size={20} />}\`). Only dedicated row selection checkbox columns are exempt.
-- **Mandatory Resizable Columns**: All data columns must support column resizing. Explicitly setting \`resizable={false}\` on data columns is strictly prohibited.
-- **Single Borders**: Never wrap \`<Table>\` in redundant outer bordered containers. Never apply \`divide-y\` to \`<TableBody>\`.
-- **Uniform Table Typography**: All fonts across all cells and headers must share standard 14px size and uniform color (\`text-text-primary\`).
-- **No Vertical Stacking**: Never vertically stack subtext or metadata inside \`<TableCell>\`. Every piece of metadata must reside in its own dedicated, resizable column.
-- **Windowed Pagination**: Data tables rendering dynamic collections must implement pagination (Previous/Next buttons, page size selector [25, 50, 100], and 'Showing X to Y of Z' range indicator).
+3. GEOMETRY & RADII:
+   - Standard control height for buttons and inputs is strictly max ${maxControlHeight}px ('h-[36px]' or 'h-9').
+   - Allowed corner radii tokens: ${allowedRadii}. Never use random arbitrary radii.
 
-## Modals & Overlays
-- **No Backdrop Blur**: \`backdrop-blur-*\` is strictly prohibited. Modal backdrops must use standard neutral grey overlay (\`bg-neutral-100/80\`) without blur.
-<!-- END:design-system-enforcer-rules -->
+4. COLOR SCALE & PURITY:
+   - Strictly neutral palette for base surfaces and borders ('neutral-100' through 'neutral-900').
+   - Banned arbitrary color families: ${bannedColors}.
+   - Never use arbitrary inline hex colors ('#1a2b3c') in utility classes. Use design system CSS variables ('var(--primary)').
+
+5. BEFORE FINISHING UI EDITS:
+   - Run 'npx dse check' to verify zero design system violations.
+<!-- END:DSE-AGENT-RULES -->
 `;
 }
+function installPreCommitHook(cwd = process.cwd()) {
+  const gitDir = import_node_path6.default.resolve(cwd, ".git");
+  if (!import_node_fs6.default.existsSync(gitDir)) {
+    throw new Error("No .git repository found in this directory.");
+  }
+  const hooksDir = import_node_path6.default.resolve(gitDir, "hooks");
+  if (!import_node_fs6.default.existsSync(hooksDir)) {
+    import_node_fs6.default.mkdirSync(hooksDir, { recursive: true });
+  }
+  const hookPath = import_node_path6.default.resolve(hooksDir, "pre-commit");
+  const hookScript = `#!/usr/bin/env sh
+# Design System Enforcer (DSE) Pre-Commit Hook
+echo "
+\u{1F50D} Running Design System Enforcer pre-commit check..."
 
-// src/index.ts
-async function scanProject(options) {
-  const cwd = options?.cwd || process.cwd();
-  const config = options?.config || await loadConfig(cwd, options?.configPath);
-  return runDseScan(config, cwd);
+if command -v npx >/dev/null 2>&1; then
+  npx dse check --strict
+  RESULT=$?
+  if [ $RESULT -ne 0 ]; then
+    echo "
+\u274C Commit rejected: Design System violations found."
+    echo "\u{1F4A1} Run 'npx dse fix' or 'npx dse check' to review issues.
+"
+    exit 1
+  fi
+fi
+`;
+  import_node_fs6.default.writeFileSync(hookPath, hookScript, { mode: 493 });
+  return true;
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  berserkPreset,
-  defaultPreset,
+  DesignSystemRuntimeError,
+  DseGuard,
+  assertValidStyles,
+  computeDoctorScore,
   defineConfig,
-  formatJson,
-  formatStylish,
-  generateMarkdownRules,
+  detectProject,
+  dseAstroPlugin,
+  generateAgentInstructions,
+  installPreCommitHook,
   loadConfig,
-  runDseScan,
-  scaffoldAllPrimitives,
-  scaffoldComponent,
-  scaffoldConfig,
-  scaffoldTokens,
-  scanProject
+  runDseFix,
+  runDseScan
 });
 //# sourceMappingURL=index.cjs.map

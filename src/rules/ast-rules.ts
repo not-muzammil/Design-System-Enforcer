@@ -196,7 +196,7 @@ function checkRawHtmlElements(
         `Raw browser default '<input type="range">' detected. Never use unstyled browser sliders. Use standard design system '<Slider>'.`,
         lineSnippet
       );
-    } else if (typeVal === "file") {
+    } else if (typeVal === "file" && !(attributes.className?.initializer?.getText() || "").includes("hidden")) {
       addViolation(
         filePath,
         pos.line,
@@ -323,6 +323,16 @@ function checkTableBodyInvariants(
 ) {
   if (attributes.className) {
     const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile =
+    normPath.includes("components/ui/") ||
+    normPath.includes("lib/tokens.") ||
+    normPath.includes("tokens.") ||
+    (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+
+  const effectiveColorConfig = isPrimitivesFile
+    ? { ...config.tokens?.colors, disallowHardcodedColors: false }
+    : config.tokens?.colors;
     classStrings.forEach(({ text }) => {
       if (/\bdivide-y\b/.test(text)) {
         addViolation(
@@ -613,6 +623,16 @@ function checkElementClasses(
 
   const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
   const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile =
+    normPath.includes("components/ui/") ||
+    normPath.includes("lib/tokens.") ||
+    normPath.includes("tokens.") ||
+    (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+
+  const effectiveColorConfig = isPrimitivesFile
+    ? { ...config.tokens?.colors, disallowHardcodedColors: false }
+    : config.tokens?.colors;
 
   classStrings.forEach(({ text, node: stringNode }) => {
     const tokens = splitClassString(text);
@@ -639,7 +659,7 @@ function checkElementClasses(
       });
 
       // Color checks
-      const colorViolations = evaluateColorToken(dec.core, config.tokens?.colors);
+      const colorViolations = evaluateColorToken(dec.core, effectiveColorConfig);
       colorViolations.forEach((v) => {
         if (config.rules?.[v.rule as keyof typeof config.rules] !== "off") {
           addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
@@ -691,3 +711,6 @@ function checkElementClasses(
     }
   }
 }
+
+
+

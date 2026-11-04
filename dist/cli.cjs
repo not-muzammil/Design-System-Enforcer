@@ -113,7 +113,8 @@ var berserkPreset = {
       ],
       disallowRawHex: true,
       disallowButtonChipColors: true,
-      disallowSaturatedGradients: true
+      disallowSaturatedGradients: true,
+      disallowHardcodedColors: true
     }
   },
   components: {
@@ -175,7 +176,8 @@ var berserkPreset = {
     "table-windowed-pagination": "error",
     "tabs-component-required": "error",
     "component-inventory-active": "error",
-    "no-wrapping-compact-elements": "error"
+    "no-wrapping-compact-elements": "error",
+    "no-hardcoded-colors": "error"
   }
 };
 
@@ -798,13 +800,13 @@ function decomposeToken(rawToken) {
   const variants = parts;
   return { raw: rawToken, core, variants };
 }
-function evaluateTypographyToken(core, config) {
+function evaluateTypographyToken(core, config2) {
   const violations = [];
-  const minFont = config?.minFontSize || "14px";
-  const maxFont = config?.maxFontSize || "32px";
-  const maxWeight = config?.maxFontWeight ?? 500;
-  const disallowArbitrary = config?.disallowArbitrarySizes ?? true;
-  const disallowUppercase = config?.disallowUppercase ?? true;
+  const minFont = config2?.minFontSize || "14px";
+  const maxFont = config2?.maxFontSize || "32px";
+  const maxWeight = config2?.maxFontWeight ?? 500;
+  const disallowArbitrary = config2?.disallowArbitrarySizes ?? true;
+  const disallowUppercase = config2?.disallowUppercase ?? true;
   if (/^text-(?:xs|2xs)$/.test(core)) {
     violations.push({
       rule: "font-size-min",
@@ -865,10 +867,10 @@ function evaluateTypographyToken(core, config) {
   }
   return violations;
 }
-function evaluateGeometryToken(core, config, isCheckbox = false) {
+function evaluateGeometryToken(core, config2, isCheckbox = false) {
   const violations = [];
-  const allowedRadii = new Set(config?.allowedRadii || ["0", "0px", "8px", "12px", "16px", "9999px", "100%"]);
-  const checkboxRadii = new Set(config?.radiiExceptions?.Checkbox || ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"]);
+  const allowedRadii = new Set(config2?.allowedRadii || ["0", "0px", "8px", "12px", "16px", "9999px", "100%"]);
+  const checkboxRadii = new Set(config2?.radiiExceptions?.Checkbox || ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"]);
   if (/^rounded(?:-(?:xs|sm|md|lg|xl|2xl|3xl|none|full))?$/.test(core)) {
     if (core === "rounded-xs" || core === "rounded") {
       if (!isCheckbox) {
@@ -897,9 +899,9 @@ function evaluateGeometryToken(core, config, isCheckbox = false) {
   }
   return violations;
 }
-function evaluateColorToken(core, config) {
+function evaluateColorToken(core, config2) {
   const violations = [];
-  const bannedFamilies = new Set(config?.bannedColorFamilies || []);
+  const bannedFamilies = new Set(config2?.bannedColorFamilies || []);
   if (bannedFamilies.size > 0) {
     const colorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-([a-z]+)-[0-9]{2,3}$/);
     if (colorMatch) {
@@ -912,7 +914,7 @@ function evaluateColorToken(core, config) {
       }
     }
   }
-  if (config?.disallowSaturatedGradients) {
+  if (config2?.disallowSaturatedGradients) {
     if (core === "bg-clip-text" || core === "text-transparent") {
       violations.push({
         rule: "no-unapproved-gradients",
@@ -920,11 +922,46 @@ function evaluateColorToken(core, config) {
       });
     }
   }
+  if (config2?.disallowHardcodedColors) {
+    const arbitraryColorMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-\[(#(?:[0-9a-fA-F]{3,8})|rgba?\(|hsla?\([^\]]+)\]/);
+    if (arbitraryColorMatch) {
+      violations.push({
+        rule: "no-hardcoded-colors",
+        message: `Disallowed hardcoded inline color '${core}'. Colors must not be hardcoded in application code. Use design system CSS variables (e.g. 'bg-[var(--primary)]') or token classes.`
+      });
+    }
+    const rawPaletteMatch = core.match(/^(?:bg|text|border|ring|stroke|fill|from|to|via)-([a-z]+)(?:-[0-9]{2,3})?$/);
+    if (rawPaletteMatch) {
+      const family = rawPaletteMatch[1];
+      const allowedFamilies = /* @__PURE__ */ new Set([
+        "neutral",
+        "transparent",
+        "current",
+        "inherit",
+        "white",
+        "black",
+        "primary",
+        "secondary",
+        "muted",
+        "accent",
+        "border",
+        "input",
+        "background",
+        "foreground"
+      ]);
+      if (!allowedFamilies.has(family)) {
+        violations.push({
+          rule: "no-hardcoded-colors",
+          message: `Disallowed hardcoded color class '${core}'. Application code must only use design system tokens ('neutral-*' or 'var(--...)'). Primitive color palettes ('${family}') are only permitted inside canonical UI primitives.`
+        });
+      }
+    }
+  }
   return violations;
 }
 
 // src/rules/ast-rules.ts
-function runAstRules(sourceFile, filePath, addViolation, fileImports, config) {
+function runAstRules(sourceFile, filePath, addViolation, fileImports, config2) {
   const isTsx = filePath.endsWith(".tsx") || filePath.endsWith(".jsx");
   if (!isTsx) return;
   const content = sourceFile.getFullText();
@@ -956,26 +993,26 @@ function runAstRules(sourceFile, filePath, addViolation, fileImports, config) {
       else if (tagName === "TableCell") hasTableCell = true;
       else if (tagName === "TableColumnHeader") usesColumnHeader = true;
       else if (tagName === "TableResizeDivider") usesResizeDivider = true;
-      if (config.rules?.["no-raw-html-elements"] !== "off") {
-        checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config);
+      if (config2.rules?.["no-raw-html-elements"] !== "off") {
+        checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2);
       }
-      checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config);
+      checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2);
       if (tagName === "TableHead") {
-        checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config);
+        checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2);
       }
-      if (tagName === "TableBody" && config.rules?.["table-no-divide-y"] !== "off") {
+      if (tagName === "TableBody" && config2.rules?.["table-no-divide-y"] !== "off") {
         checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineSnippet, sourceFile);
       }
       if (tagName === "TableCell") {
-        checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config);
+        checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2);
       }
-      if (tagName === "Tabs" && config.rules?.["tabs-component-required"] !== "off") {
+      if (tagName === "Tabs" && config2.rules?.["tabs-component-required"] !== "off") {
         checkTabsElement(attributes, pos, filePath, addViolation, lineSnippet, fileImports);
       }
-      if ((tagName === "span" || tagName === "div") && config.rules?.["no-pseudo-chips"] !== "off") {
+      if ((tagName === "span" || tagName === "div") && config2.rules?.["no-pseudo-chips"] !== "off") {
         checkPseudoChips(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile);
       }
-      checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config);
+      checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config2);
     }
     if (import_typescript2.default.isCallExpression(node)) {
       const fnName = node.expression.getText(sourceFile);
@@ -1005,14 +1042,14 @@ function runAstRules(sourceFile, filePath, addViolation, fileImports, config) {
     usesColumnHeader,
     usesResizeDivider,
     usesResizableHook,
-    config
+    config2
   );
 }
-function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config) {
+function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2) {
   if (tagName[0] !== tagName[0].toLowerCase()) {
     return;
   }
-  const replacements = config.components?.disallowRawHtml || {};
+  const replacements = config2.components?.disallowRawHtml || {};
   const configEntry = replacements[tagName.toLowerCase()];
   if (configEntry) {
     addViolation(
@@ -1055,7 +1092,7 @@ function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, 
         `Raw browser default '<input type="range">' detected. Never use unstyled browser sliders. Use standard design system '<Slider>'.`,
         lineSnippet
       );
-    } else if (typeVal === "file") {
+    } else if (typeVal === "file" && !(attributes.className?.initializer?.getText() || "").includes("hidden")) {
       addViolation(
         filePath,
         pos.line,
@@ -1085,10 +1122,10 @@ function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, 
     }
   }
 }
-function checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config) {
+function checkButtonInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, config2) {
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
   if (!isButton) return;
-  if (config.rules?.["no-chip-colored-buttons"] !== "off" && attributes.variant && attributes.variant.initializer) {
+  if (config2.rules?.["no-chip-colored-buttons"] !== "off" && attributes.variant && attributes.variant.initializer) {
     const varVal = attributes.variant.initializer.getText().replace(/['"]/g, "");
     if (["danger", "success", "warning", "error"].includes(varVal)) {
       addViolation(
@@ -1102,11 +1139,11 @@ function checkButtonInvariants(tagName, attributes, pos, filePath, addViolation,
     }
   }
 }
-function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config) {
+function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2) {
   const hasIconProp = Boolean(attributes.icon);
   const rawChildren = node.getText(sourceFile);
   const isCheckboxCol = /<(?:Checkbox\b|input[^>]*type=["']checkbox["'])/i.test(rawChildren) || /toggleSelect/i.test(rawChildren) || /selectedEmails|selectedIds|selectedLeadIds/i.test(rawChildren) || attributes.resizable?.initializer?.getText(sourceFile) === "{false}" && /checkbox/i.test(rawChildren);
-  if (config.rules?.["table-head-icon-required"] !== "off" && !hasIconProp && !isCheckboxCol) {
+  if (config2.rules?.["table-head-icon-required"] !== "off" && !hasIconProp && !isCheckboxCol) {
     addViolation(
       filePath,
       pos.line,
@@ -1116,7 +1153,7 @@ function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation,
       lineSnippet
     );
   }
-  if (config.rules?.["table-resizable-required"] !== "off" && attributes.resizable && attributes.resizable.initializer) {
+  if (config2.rules?.["table-resizable-required"] !== "off" && attributes.resizable && attributes.resizable.initializer) {
     const resizableVal = attributes.resizable.initializer.getText(sourceFile);
     if (resizableVal === "{false}" && !isCheckboxCol) {
       addViolation(
@@ -1129,7 +1166,7 @@ function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation,
       );
     }
   }
-  if (config.rules?.["table-no-horizontal-stacking"] !== "off") {
+  if (config2.rules?.["table-no-horizontal-stacking"] !== "off") {
     if (/(?:email\s*(?:&|\/)\s*deliverability|deliverability\s*(?:&|\/)\s*email|pages\s*(?:&|\/)\s*dupes|warmup\s*(?:&|\/)\s*deliverability)/i.test(rawChildren)) {
       addViolation(
         filePath,
@@ -1145,6 +1182,9 @@ function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation,
 function checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineSnippet, sourceFile) {
   if (attributes.className) {
     const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+    const normPath = filePath.replace(/\\/g, "/");
+    const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+    const effectiveColorConfig = isPrimitivesFile ? { ...config.tokens?.colors, disallowHardcodedColors: false } : config.tokens?.colors;
     classStrings.forEach(({ text }) => {
       if (/\bdivide-y\b/.test(text)) {
         addViolation(
@@ -1159,7 +1199,7 @@ function checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineS
     });
   }
 }
-function checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config) {
+function checkTableCellInvariants(node, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, config2) {
   if (attributes && attributes.colSpan) return;
   const childrenText = node.getText(sourceFile);
   let hasVerticalStack = false;
@@ -1186,7 +1226,7 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
           }
         });
       }
-      if (config.rules?.["table-uniform-typography"] !== "off") {
+      if (config2.rules?.["table-uniform-typography"] !== "off") {
         const isExempt = childTag && ["Button", "IconButton", "ButtonyIcon", "Chip", "Badge", "Input", "Skeleton"].includes(childTag);
         if (!isExempt && childAttrs.className) {
           const classes = extractClassNames(childAttrs.className.initializer, sourceFile);
@@ -1227,7 +1267,7 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
   if (node.children) {
     node.children.forEach(inspectCellDescendant);
   }
-  if (config.rules?.["table-no-cell-stacking"] !== "off") {
+  if (config2.rules?.["table-no-cell-stacking"] !== "off") {
     if (hasVerticalStack || directBlockCount > 1) {
       if (!childrenText.includes("dse-ignore-stack")) {
         addViolation(
@@ -1241,7 +1281,7 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
       }
     }
   }
-  if (config.rules?.["table-no-horizontal-stacking"] !== "off") {
+  if (config2.rules?.["table-no-horizontal-stacking"] !== "off") {
     if (/(?:flex\s+items-center|inline-flex|flex-row|items-center\s+gap)/.test(childrenText) && /<(?:Chip|Badge)\b/.test(childrenText) && /<(?:span|div|p)\b[^>]*>(?:(?!<\/(?:span|div|p)>)[\s\S])*?(?:email|\.email|\{cEmail\}|\{item\.email\}|@)[^<]*?<\/(?:span|div|p)>/i.test(childrenText) && !childrenText.includes("dse-ignore-stack")) {
       addViolation(
         filePath,
@@ -1254,8 +1294,8 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
     }
   }
 }
-function checkTableFileInvariants(filePath, content, addViolation, fileImports, hasTable, hasTableHeader, hasTableHead, hasTableBody, hasTableRow, hasTableCell, usesColumnHeader, usesResizeDivider, usesResizableHook, config) {
-  if (config.rules?.["table-resizable-required"] !== "off") {
+function checkTableFileInvariants(filePath, content, addViolation, fileImports, hasTable, hasTableHeader, hasTableHead, hasTableBody, hasTableRow, hasTableCell, usesColumnHeader, usesResizeDivider, usesResizableHook, config2) {
+  if (config2.rules?.["table-resizable-required"] !== "off") {
     const usesTablePrimitivesWithoutTable = (usesColumnHeader || usesResizeDivider || usesResizableHook) && !hasTable;
     if (usesTablePrimitivesWithoutTable) {
       addViolation(
@@ -1268,7 +1308,7 @@ function checkTableFileInvariants(filePath, content, addViolation, fileImports, 
       );
     }
   }
-  if (hasTable && config.rules?.["table-single-border"] !== "off") {
+  if (hasTable && config2.rules?.["table-single-border"] !== "off") {
     if (/<div\b[^>]*\b(?:border\b|border-stroke|border-neutral)\b[^>]*>\s*<Table\b/.test(content)) {
       addViolation(
         filePath,
@@ -1280,7 +1320,7 @@ function checkTableFileInvariants(filePath, content, addViolation, fileImports, 
       );
     }
   }
-  if (hasTable && config.rules?.["table-windowed-pagination"] !== "off") {
+  if (hasTable && config2.rules?.["table-windowed-pagination"] !== "off") {
     const normFilePath = filePath.replace(/\\/g, "/");
     const isExcludedFromPagination = normFilePath.includes("components/ui/table.tsx") || normFilePath.includes("components/settings/") || normFilePath.includes("app/(dashboard)/settings") || normFilePath.includes("lead-import-modal.tsx") || content.includes("dse-ignore-pagination");
     if (!isExcludedFromPagination) {
@@ -1334,7 +1374,7 @@ function checkPseudoChips(tagName, attributes, pos, filePath, addViolation, line
     }
   });
 }
-function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config) {
+function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config2) {
   if (!attributes.className) return;
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
   const isChip = ["Chip", "Badge", "Tag", "StatusBadge"].includes(tagName);
@@ -1343,31 +1383,34 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
   const isCheckbox = tagName === "Checkbox" || attributes.type?.initializer?.getText(sourceFile)?.includes("checkbox") || attributes.role?.initializer?.getText(sourceFile)?.includes("checkbox") || Boolean(attributes["aria-checked"]) || attributes.className && /\b(?:size-5|w-5\s+h-5)\b/.test(attributes.className.rawText);
   const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
   const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+  const effectiveColorConfig = isPrimitivesFile ? { ...config2.tokens?.colors, disallowHardcodedColors: false } : config2.tokens?.colors;
   classStrings.forEach(({ text, node: stringNode }) => {
     const tokens = splitClassString(text);
     tokens.forEach((rawToken) => {
       const dec = decomposeToken(rawToken);
       if (!dec) return;
       const nodePos = stringNode ? getNodePosition(sourceFile, stringNode) : pos;
-      const typoViolations = evaluateTypographyToken(dec.core, config.tokens?.typography);
+      const typoViolations = evaluateTypographyToken(dec.core, config2.tokens?.typography);
       typoViolations.forEach((v) => {
-        if (config.rules?.[v.rule] !== "off") {
+        if (config2.rules?.[v.rule] !== "off") {
           addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
         }
       });
-      const geoViolations = evaluateGeometryToken(dec.core, config.tokens?.geometry, isCheckbox);
+      const geoViolations = evaluateGeometryToken(dec.core, config2.tokens?.geometry, isCheckbox);
       geoViolations.forEach((v) => {
-        if (config.rules?.[v.rule] !== "off") {
+        if (config2.rules?.[v.rule] !== "off") {
           addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
         }
       });
-      const colorViolations = evaluateColorToken(dec.core, config.tokens?.colors);
+      const colorViolations = evaluateColorToken(dec.core, effectiveColorConfig);
       colorViolations.forEach((v) => {
-        if (config.rules?.[v.rule] !== "off") {
+        if (config2.rules?.[v.rule] !== "off") {
           addViolation(filePath, nodePos.line, nodePos.col, v.rule, v.message, lineSnippet);
         }
       });
-      if (isButton && config.rules?.["control-height-max"] !== "off") {
+      if (isButton && config2.rules?.["control-height-max"] !== "off") {
         if (/\bh-(?:10|11|12|14|16|\[(?:3[8-9]|[4-9][0-9]|[1-9][0-9]{2,})px\])\b/.test(dec.core)) {
           addViolation(
             filePath,
@@ -1379,7 +1422,7 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
           );
         }
       }
-      if (isCompactElement && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+      if (isCompactElement && config2.rules?.["no-wrapping-compact-elements"] !== "off") {
         if (dec.core === "flex-wrap" || dec.core === "whitespace-normal" || dec.core === "whitespace-pre-wrap") {
           addViolation(
             filePath,
@@ -1393,7 +1436,7 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
       }
     });
   });
-  if (tagName === "TableHead" && config.rules?.["no-wrapping-compact-elements"] !== "off") {
+  if (tagName === "TableHead" && config2.rules?.["no-wrapping-compact-elements"] !== "off") {
     const rawClass = attributes.className?.rawText || "";
     if (/\b(?:flex-wrap|whitespace-normal|whitespace-pre-wrap)\b/.test(rawClass)) {
       addViolation(
@@ -1409,7 +1452,9 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
 }
 
 // src/rules/regex-rules.ts
-function runRegexRules(content, filePath, addViolation, config) {
+function runRegexRules(content, filePath, addViolation, config2) {
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || normPath.includes("globals.css") || normPath.includes("index.css") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
   const lines = content.split("\n");
   const unicodeArrowRegex = /[\u2190-\u2199\u21D0-\u21D9\u2794-\u27BF\u21B0-\u21B5\u27F5-\u27FF]|(?:->|<-)/gu;
   const hexColorRegex = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
@@ -1426,7 +1471,7 @@ function runRegexRules(content, filePath, addViolation, config) {
       return;
     }
     const codeOnlyLine = line.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
-    if (config.rules?.["no-text-arrows"] !== "off") {
+    if (config2.rules?.["no-text-arrows"] !== "off") {
       unicodeArrowRegex.lastIndex = 0;
       let match;
       while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
@@ -1440,7 +1485,7 @@ function runRegexRules(content, filePath, addViolation, config) {
         );
       }
     }
-    if (config.rules?.["no-backdrop-blur"] !== "off") {
+    if (config2.rules?.["no-backdrop-blur"] !== "off") {
       if (!codeOnlyLine.includes("no-backdrop-blur")) {
         backdropBlurRegex.lastIndex = 0;
         let match;
@@ -1456,12 +1501,12 @@ function runRegexRules(content, filePath, addViolation, config) {
         }
       }
     }
-    if (config.rules?.["no-raw-hex-colors"] !== "off") {
+    if (config2.rules?.["no-raw-hex-colors"] !== "off") {
       hexColorRegex.lastIndex = 0;
       let match;
       while ((match = hexColorRegex.exec(codeOnlyLine)) !== null) {
         const hex = match[0];
-        if (!codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
+        if (!isPrimitivesFile && !codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
           addViolation(
             filePath,
             lineNum,
@@ -1473,7 +1518,7 @@ function runRegexRules(content, filePath, addViolation, config) {
         }
       }
     }
-    if (config.rules?.["no-chip-colored-buttons"] !== "off") {
+    if (config2.rules?.["no-chip-colored-buttons"] !== "off") {
       buttonOpenRegex.lastIndex = 0;
       if (buttonOpenRegex.test(line)) {
         inButtonTag = true;
@@ -1518,7 +1563,7 @@ function isInsidePythonString(line, index) {
   }
   return inSingle || inDouble;
 }
-function runPythonRules(content, filePath, addViolation, config) {
+function runPythonRules(content, filePath, addViolation, config2) {
   const lines = content.split("\n");
   const isPython = filePath.endsWith(".py");
   const isCssOrHtml = filePath.endsWith(".css") || filePath.endsWith(".html") || filePath.endsWith(".jinja") || filePath.endsWith(".jinja2");
@@ -1534,7 +1579,7 @@ function runPythonRules(content, filePath, addViolation, config) {
     const codeOnlyLine = isPython ? line.replace(/#.*$/, "") : line.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
     if (line.includes("<style>")) inStyleBlock = true;
     if (line.includes("</style>")) inStyleBlock = false;
-    if (config.rules?.["no-text-arrows"] !== "off") {
+    if (config2.rules?.["no-text-arrows"] !== "off") {
       unicodeArrowRegex.lastIndex = 0;
       let match;
       while ((match = unicodeArrowRegex.exec(codeOnlyLine)) !== null) {
@@ -1558,7 +1603,7 @@ function runPythonRules(content, filePath, addViolation, config) {
         const val = parseFloat(fontSizeMatch[1]);
         const unit = fontSizeMatch[2].toLowerCase();
         const px = unit === "rem" ? val * 16 : val;
-        if (px < 14 && config.rules?.["font-size-min"] !== "off") {
+        if (px < 14 && config2.rules?.["font-size-min"] !== "off") {
           addViolation(
             filePath,
             lineNum,
@@ -1567,7 +1612,7 @@ function runPythonRules(content, filePath, addViolation, config) {
             `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) is smaller than 14px. Primary body font must strictly be standard 14px.`,
             line
           );
-        } else if (px > 32 && config.rules?.["font-size-max"] !== "off") {
+        } else if (px > 32 && config2.rules?.["font-size-max"] !== "off") {
           addViolation(
             filePath,
             lineNum,
@@ -1579,7 +1624,7 @@ function runPythonRules(content, filePath, addViolation, config) {
         }
       }
       const fontWeightMatch = line.match(/font-weight\s*:\s*([0-9]{3}|bold|bolder|semibold)/i);
-      if (fontWeightMatch && config.rules?.["font-weight-max"] !== "off") {
+      if (fontWeightMatch && config2.rules?.["font-weight-max"] !== "off") {
         const rawWeight = fontWeightMatch[1].toLowerCase();
         const weightNum = parseInt(rawWeight, 10);
         if (weightNum > 500 || ["bold", "bolder", "semibold"].includes(rawWeight)) {
@@ -1593,7 +1638,7 @@ function runPythonRules(content, filePath, addViolation, config) {
           );
         }
       }
-      if (config.rules?.["no-backdrop-blur"] !== "off" && /backdrop-filter\s*:\s*blur/i.test(line)) {
+      if (config2.rules?.["no-backdrop-blur"] !== "off" && /backdrop-filter\s*:\s*blur/i.test(line)) {
         addViolation(
           filePath,
           lineNum,
@@ -1604,7 +1649,7 @@ function runPythonRules(content, filePath, addViolation, config) {
         );
       }
     }
-    if (config.rules?.["no-raw-hex-colors"] !== "off") {
+    if (config2.rules?.["no-raw-hex-colors"] !== "off") {
       hexColorRegex.lastIndex = 0;
       let match;
       while ((match = hexColorRegex.exec(line)) !== null) {
@@ -1625,20 +1670,20 @@ function runPythonRules(content, filePath, addViolation, config) {
 }
 
 // src/rules/runner.ts
-async function runDseScan(config, cwd = process.cwd()) {
-  let targetDir = import_node_path4.default.resolve(cwd, config.targetDir || "src");
+async function runDseScan(config2, cwd = process.cwd()) {
+  let targetDir = import_node_path4.default.resolve(cwd, config2.targetDir || "src");
   if (!import_node_fs4.default.existsSync(targetDir)) {
     targetDir = cwd;
   }
-  const includePatterns = config.include || ["**/*.{tsx,jsx,ts,js}"];
-  const excludePatterns = config.exclude || [
+  const includePatterns = config2.include || ["**/*.{tsx,jsx,ts,js}"];
+  const excludePatterns = config2.exclude || [
     "**/node_modules/**",
     "**/.next/**",
     "**/public/**",
     "**/.git/**"
   ];
   const inventoryCounts = {};
-  const inventoryDef = config.components?.requiredInventory || [];
+  const inventoryDef = config2.components?.requiredInventory || [];
   inventoryDef.forEach((comp) => {
     inventoryCounts[comp.name] = 0;
   });
@@ -1663,7 +1708,7 @@ async function runDseScan(config, cwd = process.cwd()) {
     const key = `${normFile}:${line}:${rule}`;
     if (seenViolationKeys.has(key)) return;
     seenViolationKeys.add(key);
-    const severity = config.rules?.[rule] || "error";
+    const severity = config2.rules?.[rule] || "error";
     if (severity === "off") return;
     violations.push({
       file: normFile,
@@ -1691,15 +1736,15 @@ async function runDseScan(config, cwd = process.cwd()) {
       });
       const sourceFile = parseTsx(filePath, content);
       const fileImports = getFileImports(sourceFile);
-      runAstRules(sourceFile, filePath, addViolation, fileImports, config);
-      runRegexRules(content, filePath, addViolation, config);
+      runAstRules(sourceFile, filePath, addViolation, fileImports, config2);
+      runRegexRules(content, filePath, addViolation, config2);
     } else if (isPythonOrTemplate) {
-      runPythonRules(content, filePath, addViolation, config);
+      runPythonRules(content, filePath, addViolation, config2);
     } else {
-      runRegexRules(content, filePath, addViolation, config);
+      runRegexRules(content, filePath, addViolation, config2);
     }
   }
-  if (scannedJsxFiles && inventoryDef.length > 0 && config.rules?.["component-inventory-active"] !== "off") {
+  if (scannedJsxFiles && inventoryDef.length > 0 && config2.rules?.["component-inventory-active"] !== "off") {
     inventoryDef.forEach((comp) => {
       const count = inventoryCounts[comp.name] || 0;
       if (count === 0) {
@@ -2396,11 +2441,11 @@ function scaffoldAllPrimitives(cwd = process.cwd()) {
 }
 
 // src/export-rules/index.ts
-function generateMarkdownRules(config) {
-  const minFont = config.tokens?.typography?.minFontSize || "14px";
-  const maxFont = config.tokens?.typography?.maxFontSize || "32px";
-  const maxWeight = config.tokens?.typography?.maxFontWeight ?? 500;
-  const maxControlHeight = config.tokens?.geometry?.maxControlHeight || "36px";
+function generateMarkdownRules(config2) {
+  const minFont = config2.tokens?.typography?.minFontSize || "14px";
+  const maxFont = config2.tokens?.typography?.maxFontSize || "32px";
+  const maxWeight = config2.tokens?.typography?.maxFontWeight ?? 500;
+  const maxControlHeight = config2.tokens?.geometry?.maxControlHeight || "36px";
   return `<!-- BEGIN:design-system-enforcer-rules -->
 # Design System Rules & Constraints (Enforced by DSE)
 
@@ -2554,8 +2599,8 @@ function formatDoctorOutput(report) {
 // src/fixer/index.ts
 var import_node_fs6 = __toESM(require("fs"), 1);
 var import_node_path6 = __toESM(require("path"), 1);
-async function runDseFix(config, cwd = process.cwd()) {
-  const scanResult = await runDseScan(config, cwd);
+async function runDseFix(config2, cwd = process.cwd()) {
+  const scanResult = await runDseScan(config2, cwd);
   const violationsByFile = {};
   scanResult.violations.forEach((v) => {
     if (!violationsByFile[v.file]) {
@@ -2651,10 +2696,10 @@ async function runDseFix(config, cwd = process.cwd()) {
 // src/guardrails/index.ts
 var import_node_fs7 = __toESM(require("fs"), 1);
 var import_node_path7 = __toESM(require("path"), 1);
-function generateAgentInstructions(config) {
-  const allowedRadii = config.tokens?.geometry?.allowedRadii?.join(", ") || "0px, 8px, 12px, 16px, 9999px";
-  const maxControlHeight = config.tokens?.geometry?.maxControlHeight || 36;
-  const bannedColors = config.tokens?.colors?.bannedColorFamilies?.join(", ") || "slate, gray, zinc, stone, etc.";
+function generateAgentInstructions(config2) {
+  const allowedRadii = config2.tokens?.geometry?.allowedRadii?.join(", ") || "0px, 8px, 12px, 16px, 9999px";
+  const maxControlHeight = config2.tokens?.geometry?.maxControlHeight || 36;
+  const bannedColors = config2.tokens?.colors?.bannedColorFamilies?.join(", ") || "slate, gray, zinc, stone, etc.";
   return `<!-- BEGIN:DSE-AGENT-RULES -->
 # DESIGN SYSTEM ENFORCER (DSE) - MANDATORY RULES
 
@@ -2720,8 +2765,8 @@ program.name("dse").description("Design System Enforcer (DSE) - AST-based Linter
 program.command("check [targetDir]", { isDefault: true }).description("Scan codebase and enforce Design System rules").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").option("-f, --format <format>", "Output format: 'stylish' | 'json'", "stylish").option("--strict", "Treat warnings as errors", false).action(async (targetDirArg, options) => {
   try {
     const cwd = targetDirArg ? import_node_path8.default.resolve(process.cwd(), targetDirArg) : process.cwd();
-    const config = await loadConfig(cwd, options.config);
-    const result = await runDseScan(config, cwd);
+    const config2 = await loadConfig(cwd, options.config);
+    const result = await runDseScan(config2, cwd);
     if (options.format === "json") {
       console.log(formatJson(result));
     } else {
@@ -2740,8 +2785,8 @@ program.command("check [targetDir]", { isDefault: true }).description("Scan code
 program.command("doctor [targetDir]").description("Perform a visual Design System health audit and compute compliance score").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").action(async (targetDirArg, options) => {
   try {
     const cwd = targetDirArg ? import_node_path8.default.resolve(process.cwd(), targetDirArg) : process.cwd();
-    const config = await loadConfig(cwd, options.config);
-    const result = await runDseScan(config, cwd);
+    const config2 = await loadConfig(cwd, options.config);
+    const result = await runDseScan(config2, cwd);
     const report = computeDoctorScore(result);
     console.log(formatDoctorOutput(report));
   } catch (err) {
@@ -2753,9 +2798,9 @@ program.command("doctor [targetDir]").description("Perform a visual Design Syste
 program.command("fix [targetDir]").description("Automatically remediate common Design System violations in place").option("-c, --config <path>", "Path to custom dse.config.js / dse.config.json").action(async (targetDirArg, options) => {
   try {
     const cwd = targetDirArg ? import_node_path8.default.resolve(process.cwd(), targetDirArg) : process.cwd();
-    const config = await loadConfig(cwd, options.config);
+    const config2 = await loadConfig(cwd, options.config);
     console.log(import_picocolors3.default.cyan("\n\u{1F527} Running Design System Enforcer Auto-Fixer...\n"));
-    const fixReport = await runDseFix(config, cwd);
+    const fixReport = await runDseFix(config2, cwd);
     if (fixReport.filesFixed === 0) {
       console.log(import_picocolors3.default.green("\u2714 No auto-fixable violations found. Your codebase is clean!"));
     } else {
@@ -2794,8 +2839,8 @@ program.command("detect [targetDir]").description("Inspect project architecture,
 });
 program.command("export-agent").description("Export ultra-compact prompt rules for Cursor, Claude, Antigravity, or Copilot").option("-w, --write <file>", "Target file to write/append into (e.g. .cursorrules, AGENTS.md)").action(async (options) => {
   const cwd = process.cwd();
-  const config = await loadConfig(cwd);
-  const instructions = generateAgentInstructions(config);
+  const config2 = await loadConfig(cwd);
+  const instructions = generateAgentInstructions(config2);
   if (options.write) {
     const targetPath = import_node_path8.default.resolve(cwd, options.write);
     if (import_node_fs8.default.existsSync(targetPath)) {
@@ -2845,8 +2890,8 @@ program.command("scaffold-primitives").description("Scaffold all canonical zero-
 });
 program.command("export-rules").description("Export rules in Markdown format for AI coding assistants (AGENTS.md, .cursorrules, CLAUDE.md)").option("-w, --write <file>", "Write directly to target file (e.g. AGENTS.md)").action(async (options) => {
   const cwd = process.cwd();
-  const config = await loadConfig(cwd);
-  const rulesMd = generateMarkdownRules(config);
+  const config2 = await loadConfig(cwd);
+  const rulesMd = generateMarkdownRules(config2);
   if (options.write) {
     const targetFile = import_node_path8.default.resolve(cwd, options.write);
     if (import_node_fs8.default.existsSync(targetFile)) {

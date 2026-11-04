@@ -1,3 +1,47 @@
+import React from 'react';
+
+interface RuntimeViolation {
+    techStack: string;
+    rule: string;
+    message: string;
+    elementOrComponent?: string;
+    receivedValue?: any;
+}
+declare class DesignSystemRuntimeError extends Error {
+    techStack: string;
+    rule: string;
+    receivedValue?: any;
+    constructor(violation: RuntimeViolation);
+}
+/**
+ * Universal color and styling invariant validator
+ */
+declare function assertValidStyles(classesOrStyles: string | Record<string, any> | undefined, componentName: string, techStack?: "react" | "next" | "astro" | "vue" | "svelte" | "python"): void;
+
+interface DseGuardProps {
+    children: React.ReactNode;
+    strict?: boolean;
+}
+/**
+ * React / Next.js Runtime Design System Enforcer Guard
+ * Throws runtime errors in development if hardcoded colors, raw HTML,
+ * or non-compliant design tokens are rendered.
+ */
+declare const DseGuard: React.FC<DseGuardProps>;
+
+interface AstroPluginOptions {
+    strict?: boolean;
+}
+/**
+ * Astro / Vite Runtime & Build Guard Plugin
+ * Throws compile/runtime errors when Astro or SSR components introduce hardcoded colors or banned elements.
+ */
+declare function dseAstroPlugin(options?: AstroPluginOptions): {
+    name: string;
+    enforce: "pre";
+    transform(code: string, id: string): null;
+};
+
 type RuleSeverity = "error" | "warn" | "off";
 interface ComponentReplacement {
     replaceWith: string;
@@ -22,6 +66,8 @@ interface ColorsConfig {
     disallowRawHex?: boolean;
     disallowButtonChipColors?: boolean;
     disallowSaturatedGradients?: boolean;
+    disallowHardcodedColors?: boolean;
+    colorWhitelistPaths?: string[];
 }
 interface ComponentsConfig {
     disallowRawHtml?: Record<string, ComponentReplacement>;
@@ -61,6 +107,7 @@ interface RulesConfig {
     "tabs-component-required"?: RuleSeverity;
     "component-inventory-active"?: RuleSeverity;
     "no-wrapping-compact-elements"?: RuleSeverity;
+    "no-hardcoded-colors"?: RuleSeverity;
 }
 interface DseConfig {
     preset?: "berserk" | "recommended" | "minimal" | "python";
@@ -98,33 +145,71 @@ interface ScanResult {
 declare function defineConfig(config: DseConfig): DseConfig;
 declare function loadConfig(cwd?: string, customPath?: string): Promise<DseConfig>;
 
-declare const berserkPreset: DseConfig;
-
-declare const defaultPreset: DseConfig;
-
 declare function runDseScan(config: DseConfig, cwd?: string): Promise<ScanResult>;
 
-declare function formatStylish(result: ScanResult): string;
+interface CategoryScore {
+    name: string;
+    category: "typography" | "geometry" | "components" | "colors" | "wrapping" | "tables";
+    violations: number;
+    score: number;
+}
+interface DoctorReport {
+    overallScore: number;
+    grade: "A+" | "A" | "B" | "C" | "D" | "F";
+    scannedFiles: number;
+    totalViolations: number;
+    categories: CategoryScore[];
+    fileBreakdown: Array<{
+        file: string;
+        violations: number;
+    }>;
+}
+declare function computeDoctorScore(result: ScanResult): DoctorReport;
 
-declare function formatJson(result: ScanResult): string;
-
-declare function scaffoldConfig(cwd?: string, preset?: string): string;
-declare function scaffoldTokens(cwd?: string): {
-    tokensPath: string;
-    cssPath: string;
-};
-declare function scaffoldComponent(componentName: string, cwd?: string): string | null;
-declare function scaffoldAllPrimitives(cwd?: string): string[];
-
-declare function generateMarkdownRules(config: DseConfig): string;
+interface FixReport {
+    filesFixed: number;
+    totalModifications: number;
+    details: Array<{
+        file: string;
+        fixes: string[];
+    }>;
+}
+/**
+ * Automatically remediates common Design System Enforcer violations
+ */
+declare function runDseFix(config: DseConfig, cwd?: string): Promise<FixReport>;
 
 /**
- * Programmatic scan API for running DSE inside tests, Vite plugins, or Next.js dev server overlays.
+ * Generates AI-optimized instructions specifically tuned for LLMs and coding assistants.
  */
-declare function scanProject(options?: {
-    config?: DseConfig;
-    configPath?: string;
-    cwd?: string;
-}): Promise<ScanResult>;
+declare function generateAgentInstructions(config: DseConfig): string;
+/**
+ * Installs a git pre-commit hook in .git/hooks/pre-commit
+ */
+declare function installPreCommitHook(cwd?: string): boolean;
 
-export { type ColorsConfig, type ComponentReplacement, type ComponentsConfig, type DseConfig, type GeometryConfig, type RuleSeverity, type RulesConfig, type ScanResult, type TypographyConfig, type Violation, berserkPreset, defaultPreset, defineConfig, formatJson, formatStylish, generateMarkdownRules, loadConfig, runDseScan, scaffoldAllPrimitives, scaffoldComponent, scaffoldConfig, scaffoldTokens, scanProject };
+type Framework = "nextjs" | "vite" | "react-cra" | "remix" | "astro" | "streamlit" | "python-general" | "unknown";
+type ComponentLibrary = "shadcn" | "radix" | "tailwind" | "mui" | "chakra" | "lucide" | "none";
+interface ProjectInfo {
+    root: string;
+    isMonorepo: boolean;
+    monorepoWorkspaces: string[];
+    framework: Framework;
+    libraries: ComponentLibrary[];
+    hasTailwind: boolean;
+    tailwindVersion?: "v3" | "v4";
+    hasTypeScript: boolean;
+    hasPython: boolean;
+    suggestedIncludes: string[];
+    suggestedIgnores: string[];
+    tokensFile?: string;
+    preset: "berserk" | "default" | "python";
+}
+
+/**
+ * Autonomously inspects a project root offline to detect framework, libraries,
+ * UI file locations, design tokens, and appropriate presets.
+ */
+declare function detectProject(cwd?: string): ProjectInfo;
+
+export { type AstroPluginOptions, type CategoryScore, type ColorsConfig, type ComponentReplacement, type ComponentsConfig, DesignSystemRuntimeError, type DoctorReport, type DseConfig, DseGuard, type DseGuardProps, type FixReport, type GeometryConfig, type RuleSeverity, type RulesConfig, type RuntimeViolation, type ScanResult, type TypographyConfig, type Violation, assertValidStyles, computeDoctorScore, defineConfig, detectProject, dseAstroPlugin, generateAgentInstructions, installPreCommitHook, loadConfig, runDseFix, runDseScan };

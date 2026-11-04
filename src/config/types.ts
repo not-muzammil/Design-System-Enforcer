@@ -26,6 +26,8 @@ export interface ColorsConfig {
   disallowRawHex?: boolean;
   disallowButtonChipColors?: boolean;
   disallowSaturatedGradients?: boolean;
+  disallowHardcodedColors?: boolean;
+  colorWhitelistPaths?: string[];
 }
 
 export interface ComponentsConfig {
@@ -67,6 +69,7 @@ export interface RulesConfig {
   "tabs-component-required"?: RuleSeverity;
   "component-inventory-active"?: RuleSeverity;
   "no-wrapping-compact-elements"?: RuleSeverity;
+  "no-hardcoded-colors"?: RuleSeverity;
 }
 
 export interface DseConfig {
@@ -100,4 +103,6 @@ export interface ScanResult {
   warningCount: number;
   componentInventory: Record<string, { active: boolean; fileCount: number }>;
 }
+
+
 
