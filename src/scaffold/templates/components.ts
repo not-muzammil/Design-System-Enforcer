@@ -358,3 +358,23 @@ export const Skeleton: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   );
 };
 `;
+
+export const kbdTemplate = `import React from "react";
+
+export interface KbdProps extends React.HTMLAttributes<HTMLElement> {
+  children: React.ReactNode;
+}
+
+export const Kbd: React.FC<KbdProps> = ({ children, className = "", ...props }) => {
+  return (
+    <kbd
+      className={\inline-flex items-center justify-center h-5 min-h-5 px-1.5 text-xs font-mono font-medium text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-sm select-none pointer-events-none whitespace-nowrap \\}
+      {...props}
+    >
+      {children}
+    </kbd>
+  );
+};
+Kbd.displayName = "Kbd";
+`;
+

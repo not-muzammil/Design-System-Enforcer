@@ -13,6 +13,7 @@ import {
   cardTemplate,
   checkboxTemplate,
   skeletonTemplate,
+  kbdTemplate,
 } from "./templates/components.js";
 
 export const COMPONENT_TEMPLATES: Record<string, { filename: string; content: string }> = {
@@ -26,6 +27,7 @@ export const COMPONENT_TEMPLATES: Record<string, { filename: string; content: st
   card: { filename: "card.tsx", content: cardTemplate },
   checkbox: { filename: "checkbox.tsx", content: checkboxTemplate },
   skeleton: { filename: "skeleton.tsx", content: skeletonTemplate },
+  kbd: { filename: "kbd.tsx", content: kbdTemplate },
 };
 
 export function scaffoldConfig(cwd = process.cwd(), preset = "berserk"): string {
@@ -141,4 +143,6 @@ export function scaffoldAllPrimitives(cwd = process.cwd()): string[] {
 
   return created;
 }
+
+
 

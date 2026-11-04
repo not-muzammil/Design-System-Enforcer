@@ -48,6 +48,9 @@ export const defaultPreset: DseConfig = {
     "no-text-arrows": "error",
     "no-backdrop-blur": "warn",
     "no-wrapping-compact-elements": "warn",
+    "no-primitive-geometry-overrides": "error",
+    "no-primitive-style-overrides": "error",
   },
 };
+
 

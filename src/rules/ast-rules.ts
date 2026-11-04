@@ -323,17 +323,11 @@ function checkTableBodyInvariants(
 ) {
   if (attributes.className) {
     const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
-  const normPath = filePath.replace(/\\/g, "/");
-  const isPrimitivesFile =
-    normPath.includes("components/ui/") ||
-    normPath.includes("lib/tokens.") ||
-    normPath.includes("tokens.") ||
-    (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
-
   const effectiveColorConfig = isPrimitivesFile
     ? { ...config.tokens?.colors, disallowHardcodedColors: false }
     : config.tokens?.colors;
-    classStrings.forEach(({ text }) => {
+
+  classStrings.forEach(({ text }) => {
       if (/\bdivide-y\b/.test(text)) {
         addViolation(
           filePath,
@@ -606,6 +600,27 @@ function checkElementClasses(
   sourceFile: ts.SourceFile,
   config: DseConfig
 ) {
+  // Process element
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile =
+    normPath.includes("components/ui/") ||
+    normPath.includes("lib/tokens.") ||
+    normPath.includes("tokens.") ||
+    (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+
+  const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
+  const isStandardPrimitive = ["Chip", "Badge", "Button", "IconButton", "Input", "Dropdown", "Tabs"].includes(tagName);
+  if (isStandardPrimitive && !isPrimitivesFile && attributes.style && config.rules?.["no-primitive-style-overrides"] !== "off") {
+    addViolation(
+      filePath,
+      pos.line,
+      pos.col,
+      "no-primitive-style-overrides",
+      `Disallowed inline 'style' prop on standard primitive <${tagName}>. Never use inline styles to bypass design system tokens and component invariants.`,
+      lineSnippet
+    );
+  }
+
   if (!attributes.className) return;
 
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
@@ -621,15 +636,7 @@ function checkElementClasses(
     Boolean(attributes["aria-checked"]) ||
     (attributes.className && /\b(?:size-5|w-5\s+h-5)\b/.test(attributes.className.rawText));
 
-  const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
   const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
-  const normPath = filePath.replace(/\\/g, "/");
-  const isPrimitivesFile =
-    normPath.includes("components/ui/") ||
-    normPath.includes("lib/tokens.") ||
-    normPath.includes("tokens.") ||
-    (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
-
   const effectiveColorConfig = isPrimitivesFile
     ? { ...config.tokens?.colors, disallowHardcodedColors: false }
     : config.tokens?.colors;
@@ -693,6 +700,21 @@ function checkElementClasses(
           );
         }
       }
+
+      // Anti-Bypass: Disallow height/geometry overrides on standard primitives (e.g. overriding Chip with h-5, min-h-5)
+      const isStandardPrimitive = ["Chip", "Badge", "Button", "IconButton", "Input", "Dropdown", "Tabs"].includes(tagName);
+      if (isStandardPrimitive && !isPrimitivesFile && config.rules?.["no-primitive-geometry-overrides"] !== "off") {
+        if (/^(?:min-h|max-h|h)-(?:[1-9]|1[0-2]|\[[0-9]+px\])$/.test(dec.core)) {
+          addViolation(
+            filePath,
+            nodePos.line,
+            nodePos.col,
+            "no-primitive-geometry-overrides",
+            `Disallowed geometry override '${dec.core}' on <${tagName}>. Do not tamper with component heights via className overrides. Use built-in 'size' prop (e.g. size="sm", size="xs") or proper primitives (e.g. <Kbd> for shortcut badges).`,
+            lineSnippet
+          );
+        }
+      }
     });
   });
 
@@ -711,6 +733,14 @@ function checkElementClasses(
     }
   }
 }
+
+
+
+
+
+
+
+
 
 
 

@@ -70,6 +70,8 @@ export interface RulesConfig {
   "component-inventory-active"?: RuleSeverity;
   "no-wrapping-compact-elements"?: RuleSeverity;
   "no-hardcoded-colors"?: RuleSeverity;
+  "no-primitive-geometry-overrides"?: RuleSeverity;
+  "no-primitive-style-overrides"?: RuleSeverity;
 }
 
 export interface DseConfig {
@@ -103,6 +105,7 @@ export interface ScanResult {
   warningCount: number;
   componentInventory: Record<string, { active: boolean; fileCount: number }>;
 }
+
 
 
 

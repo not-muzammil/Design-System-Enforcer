@@ -130,8 +130,11 @@ export const berserkPreset: DseConfig = {
     "component-inventory-active": "error",
     "no-wrapping-compact-elements": "error",
     "no-hardcoded-colors": "error",
+    "no-primitive-geometry-overrides": "error",
+    "no-primitive-style-overrides": "error",
   },
 };
+
 
 
 

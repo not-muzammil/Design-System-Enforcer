@@ -110,7 +110,34 @@ describe("DSE Rules Enforcement", () => {
     const rawViolations = violations.filter((v) => v.rule === "no-raw-html-elements");
     expect(rawViolations.length).toBe(5);
   });
+
+  it("flags height and geometry overrides on standard primitives (anti-bypass)", () => {
+    const code = `
+      export const View = () => (
+        <div>
+          <Chip className="h-5 min-h-5 px-1.5">Ctrl + K</Chip>
+          <Button className="h-12">Click</Button>
+          <Chip style={{ height: 20 }}>Hacked</Chip>
+        </div>
+      );
+    `;
+    const sourceFile = parseTsx("test.tsx", code);
+    const violations: any[] = [];
+
+    runAstRules(
+      sourceFile,
+      "test.tsx",
+      (file, line, col, rule, message, snippet) => {
+        violations.push({ rule, message });
+      },
+      {},
+      berserkPreset
+    );
+
+    const geoOverrideViolations = violations.filter((v) => v.rule === "no-primitive-geometry-overrides");
+    const styleOverrideViolations = violations.filter((v) => v.rule === "no-primitive-style-overrides");
+
+    expect(geoOverrideViolations.length).toBeGreaterThanOrEqual(2);
+    expect(styleOverrideViolations.length).toBe(1);
+  });
 });
-
-
-

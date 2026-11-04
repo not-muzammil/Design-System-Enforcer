@@ -177,7 +177,9 @@ var berserkPreset = {
     "tabs-component-required": "error",
     "component-inventory-active": "error",
     "no-wrapping-compact-elements": "error",
-    "no-hardcoded-colors": "error"
+    "no-hardcoded-colors": "error",
+    "no-primitive-geometry-overrides": "error",
+    "no-primitive-style-overrides": "error"
   }
 };
 
@@ -229,7 +231,9 @@ var defaultPreset = {
     "no-chip-colored-buttons": "error",
     "no-text-arrows": "error",
     "no-backdrop-blur": "warn",
-    "no-wrapping-compact-elements": "warn"
+    "no-wrapping-compact-elements": "warn",
+    "no-primitive-geometry-overrides": "error",
+    "no-primitive-style-overrides": "error"
   }
 };
 
@@ -1182,8 +1186,6 @@ function checkTableHeadInvariants(node, attributes, pos, filePath, addViolation,
 function checkTableBodyInvariants(attributes, pos, filePath, addViolation, lineSnippet, sourceFile) {
   if (attributes.className) {
     const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
-    const normPath = filePath.replace(/\\/g, "/");
-    const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || (config.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
     const effectiveColorConfig = isPrimitivesFile ? { ...config.tokens?.colors, disallowHardcodedColors: false } : config.tokens?.colors;
     classStrings.forEach(({ text }) => {
       if (/\bdivide-y\b/.test(text)) {
@@ -1375,17 +1377,28 @@ function checkPseudoChips(tagName, attributes, pos, filePath, addViolation, line
   });
 }
 function checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config2) {
+  const normPath = filePath.replace(/\\/g, "/");
+  const isPrimitivesFile2 = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+  const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
+  const isStandardPrimitive = ["Chip", "Badge", "Button", "IconButton", "Input", "Dropdown", "Tabs"].includes(tagName);
+  if (isStandardPrimitive && !isPrimitivesFile2 && attributes.style && config2.rules?.["no-primitive-style-overrides"] !== "off") {
+    addViolation(
+      filePath,
+      pos.line,
+      pos.col,
+      "no-primitive-style-overrides",
+      `Disallowed inline 'style' prop on standard primitive <${tagName}>. Never use inline styles to bypass design system tokens and component invariants.`,
+      lineSnippet
+    );
+  }
   if (!attributes.className) return;
   const isButton = ["Button", "IconButton", "ButtonyIcon", "FloatingActionButton"].includes(tagName);
   const isChip = ["Chip", "Badge", "Tag", "StatusBadge"].includes(tagName);
   const isTab = ["Tab", "TabTrigger", "TabsTrigger"].includes(tagName);
   const isCompactElement = isButton || isChip || isTab;
   const isCheckbox = tagName === "Checkbox" || attributes.type?.initializer?.getText(sourceFile)?.includes("checkbox") || attributes.role?.initializer?.getText(sourceFile)?.includes("checkbox") || Boolean(attributes["aria-checked"]) || attributes.className && /\b(?:size-5|w-5\s+h-5)\b/.test(attributes.className.rawText);
-  const lineSnippet = sourceFile.getFullText().split("\n")[pos.line - 1] || "";
   const classStrings = extractClassNames(attributes.className.initializer, sourceFile);
-  const normPath = filePath.replace(/\\/g, "/");
-  const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
-  const effectiveColorConfig = isPrimitivesFile ? { ...config2.tokens?.colors, disallowHardcodedColors: false } : config2.tokens?.colors;
+  const effectiveColorConfig = isPrimitivesFile2 ? { ...config2.tokens?.colors, disallowHardcodedColors: false } : config2.tokens?.colors;
   classStrings.forEach(({ text, node: stringNode }) => {
     const tokens = splitClassString(text);
     tokens.forEach((rawToken) => {
@@ -1434,6 +1447,19 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
           );
         }
       }
+      const isStandardPrimitive2 = ["Chip", "Badge", "Button", "IconButton", "Input", "Dropdown", "Tabs"].includes(tagName);
+      if (isStandardPrimitive2 && !isPrimitivesFile2 && config2.rules?.["no-primitive-geometry-overrides"] !== "off") {
+        if (/^(?:min-h|max-h|h)-(?:[1-9]|1[0-2]|\[[0-9]+px\])$/.test(dec.core)) {
+          addViolation(
+            filePath,
+            nodePos.line,
+            nodePos.col,
+            "no-primitive-geometry-overrides",
+            `Disallowed geometry override '${dec.core}' on <${tagName}>. Do not tamper with component heights via className overrides. Use built-in 'size' prop (e.g. size="sm", size="xs") or proper primitives (e.g. <Kbd> for shortcut badges).`,
+            lineSnippet
+          );
+        }
+      }
     });
   });
   if (tagName === "TableHead" && config2.rules?.["no-wrapping-compact-elements"] !== "off") {
@@ -1454,7 +1480,7 @@ function checkElementClasses(node, tagName, attributes, pos, filePath, addViolat
 // src/rules/regex-rules.ts
 function runRegexRules(content, filePath, addViolation, config2) {
   const normPath = filePath.replace(/\\/g, "/");
-  const isPrimitivesFile = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || normPath.includes("globals.css") || normPath.includes("index.css") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
+  const isPrimitivesFile2 = normPath.includes("components/ui/") || normPath.includes("lib/tokens.") || normPath.includes("tokens.") || normPath.includes("globals.css") || normPath.includes("index.css") || (config2.tokens?.colors?.colorWhitelistPaths || []).some((wl) => normPath.includes(wl));
   const lines = content.split("\n");
   const unicodeArrowRegex = /[\u2190-\u2199\u21D0-\u21D9\u2794-\u27BF\u21B0-\u21B5\u27F5-\u27FF]|(?:->|<-)/gu;
   const hexColorRegex = /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
@@ -1506,7 +1532,7 @@ function runRegexRules(content, filePath, addViolation, config2) {
       let match;
       while ((match = hexColorRegex.exec(codeOnlyLine)) !== null) {
         const hex = match[0];
-        if (!isPrimitivesFile && !codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
+        if (!isPrimitivesFile2 && !codeOnlyLine.includes("svg") && !codeOnlyLine.includes("xmlns")) {
           addViolation(
             filePath,
             lineNum,
@@ -2327,6 +2353,24 @@ export const Skeleton: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({
   );
 };
 `;
+var kbdTemplate = `import React from "react";
+
+export interface KbdProps extends React.HTMLAttributes<HTMLElement> {
+  children: React.ReactNode;
+}
+
+export const Kbd: React.FC<KbdProps> = ({ children, className = "", ...props }) => {
+  return (
+    <kbd
+      className={inline-flex items-center justify-center h-5 min-h-5 px-1.5 text-xs font-mono font-medium text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-sm select-none pointer-events-none whitespace-nowrap \\}
+      {...props}
+    >
+      {children}
+    </kbd>
+  );
+};
+Kbd.displayName = "Kbd";
+`;
 
 // src/scaffold/index.ts
 var COMPONENT_TEMPLATES = {
@@ -2339,7 +2383,8 @@ var COMPONENT_TEMPLATES = {
   tabs: { filename: "tabs.tsx", content: tabsTemplate },
   card: { filename: "card.tsx", content: cardTemplate },
   checkbox: { filename: "checkbox.tsx", content: checkboxTemplate },
-  skeleton: { filename: "skeleton.tsx", content: skeletonTemplate }
+  skeleton: { filename: "skeleton.tsx", content: skeletonTemplate },
+  kbd: { filename: "kbd.tsx", content: kbdTemplate }
 };
 function scaffoldConfig(cwd = process.cwd(), preset = "berserk") {
   if (preset === "python") {

@@ -108,6 +108,8 @@ interface RulesConfig {
     "component-inventory-active"?: RuleSeverity;
     "no-wrapping-compact-elements"?: RuleSeverity;
     "no-hardcoded-colors"?: RuleSeverity;
+    "no-primitive-geometry-overrides"?: RuleSeverity;
+    "no-primitive-style-overrides"?: RuleSeverity;
 }
 interface DseConfig {
     preset?: "berserk" | "recommended" | "minimal" | "python";
