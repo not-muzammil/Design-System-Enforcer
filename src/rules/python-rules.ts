@@ -86,23 +86,27 @@ export function runPythonRules(
         const val = parseFloat(fontSizeMatch[1]);
         const unit = fontSizeMatch[2].toLowerCase();
         const px = unit === "rem" ? val * 16 : val;
+        const minFont = config.tokens?.typography?.minFontSize || "13px";
+        const minPx = parseInt(minFont, 10) || 13;
+        const maxFont = config.tokens?.typography?.maxFontSize || "32px";
+        const maxPx = parseInt(maxFont, 10) || 32;
 
-        if (px < 14 && config.rules?.["font-size-min"] !== "off") {
+        if (px < minPx && config.rules?.["font-size-min"] !== "off") {
           addViolation(
             filePath,
             lineNum,
             fontSizeMatch.index || 1,
             "font-size-min",
-            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) is smaller than 14px. Primary body font must strictly be standard 14px.`,
+            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) is smaller than ${minFont}. Primary body font must strictly be standard ${minFont}.`,
             line
           );
-        } else if (px > 32 && config.rules?.["font-size-max"] !== "off") {
+        } else if (px > maxPx && config.rules?.["font-size-max"] !== "off") {
           addViolation(
             filePath,
             lineNum,
             fontSizeMatch.index || 1,
             "font-size-max",
-            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) exceeds maximum allowed heading cap of 32px.`,
+            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) exceeds maximum allowed heading cap of ${maxFont}.`,
             line
           );
         }

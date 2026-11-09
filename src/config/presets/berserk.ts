@@ -42,7 +42,7 @@ export const berserkPreset: DseConfig = {
   ],
   tokens: {
     typography: {
-      minFontSize: "14px",
+      minFontSize: "13px",
       maxFontSize: "32px",
       maxFontWeight: 500,
       disallowArbitrarySizes: true,
@@ -51,6 +51,9 @@ export const berserkPreset: DseConfig = {
     },
     geometry: {
       maxControlHeight: 36,
+      minControlHeight: 32,
+      chipHeight: 28,
+      minIconSize: 16,
       allowedRadii: ["0", "0px", "8px", "12px", "16px", "9999px", "100%"],
       radiiExceptions: {
         Checkbox: ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"],
@@ -108,6 +111,7 @@ export const berserkPreset: DseConfig = {
     "no-arbitrary-text-size": "error",
     "no-uppercase-text": "error",
     "control-height-max": "error",
+    "icon-size-min": "error",
     "corner-radius-allowed": "error",
     "no-banned-colors": "error",
     "no-raw-hex-colors": "error",
@@ -134,7 +138,3 @@ export const berserkPreset: DseConfig = {
     "no-primitive-style-overrides": "error",
   },
 };
-
-
-
-

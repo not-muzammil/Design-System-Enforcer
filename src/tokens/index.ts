@@ -58,13 +58,15 @@ export function decomposeToken(rawToken?: string | null): DecomposedToken | null
  */
 export function evaluateTypographyToken(core: string, config?: TypographyConfig): TokenViolation[] {
   const violations: TokenViolation[] = [];
-  const minFont = config?.minFontSize || "14px";
+  const minFont = config?.minFontSize || "13px";
+  const minFontPx = parseInt(minFont, 10) || 13;
   const maxFont = config?.maxFontSize || "32px";
+  const maxFontPx = parseInt(maxFont, 10) || 32;
   const maxWeight = config?.maxFontWeight ?? 500;
   const disallowArbitrary = config?.disallowArbitrarySizes ?? true;
   const disallowUppercase = config?.disallowUppercase ?? true;
 
-  // 1. Font size < 14px (or configured min)
+  // 1. Font size < 13px (or configured min)
   if (/^text-(?:xs|2xs)$/.test(core)) {
     violations.push({
       rule: "font-size-min",
@@ -79,12 +81,12 @@ export function evaluateTypographyToken(core: string, config?: TypographyConfig)
     const unit = arbitrarySizeMatch[2];
     const pxVal = unit === "rem" || unit === "em" ? num * 16 : num;
 
-    if (pxVal < 14) {
+    if (pxVal < minFontPx) {
       violations.push({
         rule: "font-size-min",
         message: `Disallowed arbitrary font size '${core}' (${pxVal}px) is below minimum allowed size (${minFont}).`,
       });
-    } else if (pxVal > 32) {
+    } else if (pxVal > maxFontPx) {
       violations.push({
         rule: "font-size-max",
         message: `Disallowed arbitrary font size '${core}' (${pxVal}px) exceeds maximum allowed heading size (${maxFont}).`,

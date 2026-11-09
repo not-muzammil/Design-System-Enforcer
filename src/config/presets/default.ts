@@ -13,7 +13,7 @@ export const defaultPreset: DseConfig = {
   ],
   tokens: {
     typography: {
-      minFontSize: "14px",
+      minFontSize: "13px",
       maxFontSize: "36px",
       maxFontWeight: 600,
       disallowArbitrarySizes: false,
@@ -22,6 +22,9 @@ export const defaultPreset: DseConfig = {
     },
     geometry: {
       maxControlHeight: 40,
+      minControlHeight: 32,
+      chipHeight: 28,
+      minIconSize: 16,
       allowedRadii: ["0", "0px", "4px", "6px", "8px", "12px", "16px", "9999px", "100%"],
     },
     colors: {
@@ -50,7 +53,6 @@ export const defaultPreset: DseConfig = {
     "no-wrapping-compact-elements": "warn",
     "no-primitive-geometry-overrides": "error",
     "no-primitive-style-overrides": "error",
+    "icon-size-min": "error",
   },
 };
-
-

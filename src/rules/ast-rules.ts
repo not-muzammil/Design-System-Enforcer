@@ -98,6 +98,11 @@ export function runAstRules(
 
       // 8. Element classes (tokens)
       checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config);
+
+      // 9. Icon size invariants (< 16px prohibited)
+      if (config.rules?.["icon-size-min"] !== "off") {
+        checkIconSizeInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, fileImports, config);
+      }
     }
 
     if (ts.isCallExpression(node)) {
@@ -226,6 +231,75 @@ function checkRawHtmlElements(
     }
   }
 
+}
+
+
+function checkIconSizeInvariants(
+  tagName: string,
+  attributes: Record<string, any>,
+  pos: { line: number; col: number },
+  filePath: string,
+  addViolation: AddViolationFn,
+  lineSnippet: string,
+  sourceFile: ts.SourceFile,
+  fileImports: Record<string, string>,
+  config: DseConfig
+) {
+  const minAllowed = typeof config.tokens?.geometry?.minIconSize === "number"
+    ? config.tokens.geometry.minIconSize
+    : 16;
+
+  const importSource = fileImports[tagName] || "";
+  const isIconModule =
+    /lucide/i.test(importSource) ||
+    /hugeicons/i.test(importSource) ||
+    /icons/i.test(importSource) ||
+    /@tabler/i.test(importSource) ||
+    /react-icons/i.test(importSource) ||
+    /heroicons/i.test(importSource) ||
+    /phosphor/i.test(importSource) ||
+    /feather/i.test(importSource);
+
+  const isNamedIcon = /(?:Icon|^[A-Z][a-zA-Z0-9]*Icon$|HugeiconsIcon)/.test(tagName);
+  const hasSizeProp = Boolean(attributes.size);
+  const isNonIconPrimitive = ["Button", "IconButton", "Input", "Dropdown", "Table", "Card", "Tabs", "Checkbox", "Avatar", "Skeleton"].includes(tagName);
+
+  const isIcon = (isIconModule || isNamedIcon || hasSizeProp) && !isNonIconPrimitive;
+  if (!isIcon) return;
+
+  // 1. Check size prop: size={14}, size="14", size={12}, etc.
+  if (attributes.size && attributes.size.initializer) {
+    const rawVal = attributes.size.initializer.getText(sourceFile).replace(/[{}"'\s]/g, "");
+    const parsed = parseFloat(rawVal);
+    if (!isNaN(parsed) && parsed < minAllowed) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "icon-size-min",
+        `Icon '<${tagName}>' has size of ${parsed}px, which is below the minimum allowed size of ${minAllowed}px. Icon sizes must strictly be ${minAllowed}px or larger.`,
+        lineSnippet
+      );
+      return;
+    }
+  }
+
+  // 2. Check Tailwind className for small dimensions
+  if (attributes.className && attributes.className.initializer) {
+    const rawClass = attributes.className.initializer.getText(sourceFile);
+    const smallClassRegex = /\b(?:size|w|h)-(?:0|0\.5|1|1\.5|2|2\.5|3|3\.5)\b|\b(?:size|w|h)-\[(?:[1-9]|1[0-5])px\]/g;
+    const match = rawClass.match(smallClassRegex);
+    if (match) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "icon-size-min",
+        `Icon '<${tagName}>' has class '${match[0]}' specifying a dimension below ${minAllowed}px. Icon sizes must strictly be ${minAllowed}px or larger.`,
+        lineSnippet
+      );
+    }
+  }
 }
 
 function checkButtonInvariants(
@@ -412,7 +486,7 @@ function checkTableCellInvariants(
                   childPos.line,
                   childPos.col,
                   "table-uniform-typography",
-                  `Mismatched table text size '${dec.core}' inside '<TableCell>'. In tables, all fonts must have standard 14px size ('text-sm').`,
+                  `Mismatched table text size '${dec.core}' inside '<TableCell>'. In tables, all fonts must have standard ${config.tokens?.typography?.minFontSize || "13px"} size ('text-sm').`,
                   lineSnippet
                 );
               }

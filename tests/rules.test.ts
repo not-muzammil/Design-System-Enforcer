@@ -140,4 +140,59 @@ describe("DSE Rules Enforcement", () => {
     expect(geoOverrideViolations.length).toBeGreaterThanOrEqual(2);
     expect(styleOverrideViolations.length).toBe(1);
   });
+
+  it("flags icon sizes below 16px (e.g. size={14})", () => {
+    const code = `
+      import { Check } from "lucide-react";
+      export const Card = () => (
+        <button>
+          <Check size={14} />
+          <span>Mark as Learned</span>
+        </button>
+      );
+    `;
+    const sourceFile = parseTsx("test.tsx", code);
+    const violations: any[] = [];
+
+    runAstRules(
+      sourceFile,
+      "test.tsx",
+      (file, line, col, rule, message, snippet) => {
+        violations.push({ rule, message });
+      },
+      { Check: "lucide-react" },
+      berserkPreset
+    );
+
+    const iconViolations = violations.filter((v) => v.rule === "icon-size-min");
+    expect(iconViolations.length).toBe(1);
+    expect(iconViolations[0].message).toContain("below the minimum allowed size of 16px");
+  });
+
+  it("permits icon sizes >= 16px (e.g. size={16})", () => {
+    const code = `
+      import { Check } from "lucide-react";
+      export const Card = () => (
+        <button>
+          <Check size={16} />
+          <span>Mark as Learned</span>
+        </button>
+      );
+    `;
+    const sourceFile = parseTsx("test.tsx", code);
+    const violations: any[] = [];
+
+    runAstRules(
+      sourceFile,
+      "test.tsx",
+      (file, line, col, rule, message, snippet) => {
+        violations.push({ rule, message });
+      },
+      { Check: "lucide-react" },
+      berserkPreset
+    );
+
+    const iconViolations = violations.filter((v) => v.rule === "icon-size-min");
+    expect(iconViolations.length).toBe(0);
+  });
 });

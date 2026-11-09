@@ -242,7 +242,7 @@ var berserkPreset = {
   ],
   tokens: {
     typography: {
-      minFontSize: "14px",
+      minFontSize: "13px",
       maxFontSize: "32px",
       maxFontWeight: 500,
       disallowArbitrarySizes: true,
@@ -251,6 +251,9 @@ var berserkPreset = {
     },
     geometry: {
       maxControlHeight: 36,
+      minControlHeight: 32,
+      chipHeight: 28,
+      minIconSize: 16,
       allowedRadii: ["0", "0px", "8px", "12px", "16px", "9999px", "100%"],
       radiiExceptions: {
         Checkbox: ["0", "0px", "4px", "0.25rem", "8px", "12px", "16px", "9999px", "100%"]
@@ -321,6 +324,7 @@ var berserkPreset = {
     "no-arbitrary-text-size": "error",
     "no-uppercase-text": "error",
     "control-height-max": "error",
+    "icon-size-min": "error",
     "corner-radius-allowed": "error",
     "no-banned-colors": "error",
     "no-raw-hex-colors": "error",
@@ -362,7 +366,7 @@ var defaultPreset = {
   ],
   tokens: {
     typography: {
-      minFontSize: "14px",
+      minFontSize: "13px",
       maxFontSize: "36px",
       maxFontWeight: 600,
       disallowArbitrarySizes: false,
@@ -371,6 +375,9 @@ var defaultPreset = {
     },
     geometry: {
       maxControlHeight: 40,
+      minControlHeight: 32,
+      chipHeight: 28,
+      minIconSize: 16,
       allowedRadii: ["0", "0px", "4px", "6px", "8px", "12px", "16px", "9999px", "100%"]
     },
     colors: {
@@ -398,7 +405,8 @@ var defaultPreset = {
     "no-backdrop-blur": "warn",
     "no-wrapping-compact-elements": "warn",
     "no-primitive-geometry-overrides": "error",
-    "no-primitive-style-overrides": "error"
+    "no-primitive-style-overrides": "error",
+    "icon-size-min": "error"
   }
 };
 
@@ -974,8 +982,10 @@ function decomposeToken(rawToken) {
 }
 function evaluateTypographyToken(core, config2) {
   const violations = [];
-  const minFont = config2?.minFontSize || "14px";
+  const minFont = config2?.minFontSize || "13px";
+  const minFontPx = parseInt(minFont, 10) || 13;
   const maxFont = config2?.maxFontSize || "32px";
+  const maxFontPx = parseInt(maxFont, 10) || 32;
   const maxWeight = config2?.maxFontWeight ?? 500;
   const disallowArbitrary = config2?.disallowArbitrarySizes ?? true;
   const disallowUppercase = config2?.disallowUppercase ?? true;
@@ -990,12 +1000,12 @@ function evaluateTypographyToken(core, config2) {
     const num = parseFloat(arbitrarySizeMatch[1]);
     const unit = arbitrarySizeMatch[2];
     const pxVal = unit === "rem" || unit === "em" ? num * 16 : num;
-    if (pxVal < 14) {
+    if (pxVal < minFontPx) {
       violations.push({
         rule: "font-size-min",
         message: `Disallowed arbitrary font size '${core}' (${pxVal}px) is below minimum allowed size (${minFont}).`
       });
-    } else if (pxVal > 32) {
+    } else if (pxVal > maxFontPx) {
       violations.push({
         rule: "font-size-max",
         message: `Disallowed arbitrary font size '${core}' (${pxVal}px) exceeds maximum allowed heading size (${maxFont}).`
@@ -1185,6 +1195,9 @@ function runAstRules(sourceFile, filePath, addViolation, fileImports, config2) {
         checkPseudoChips(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile);
       }
       checkElementClasses(node, tagName, attributes, pos, filePath, addViolation, sourceFile, config2);
+      if (config2.rules?.["icon-size-min"] !== "off") {
+        checkIconSizeInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, fileImports, config2);
+      }
     }
     if (import_typescript2.default.isCallExpression(node)) {
       const fnName = node.expression.getText(sourceFile);
@@ -1289,6 +1302,46 @@ function checkRawHtmlElements(tagName, attributes, pos, filePath, addViolation, 
         pos.col,
         "no-raw-html-elements",
         `Raw browser default '<input type="${typeVal}">' element detected. Use standard design system '<Input>' component.`,
+        lineSnippet
+      );
+    }
+  }
+}
+function checkIconSizeInvariants(tagName, attributes, pos, filePath, addViolation, lineSnippet, sourceFile, fileImports, config2) {
+  const minAllowed = typeof config2.tokens?.geometry?.minIconSize === "number" ? config2.tokens.geometry.minIconSize : 16;
+  const importSource = fileImports[tagName] || "";
+  const isIconModule = /lucide/i.test(importSource) || /hugeicons/i.test(importSource) || /icons/i.test(importSource) || /@tabler/i.test(importSource) || /react-icons/i.test(importSource) || /heroicons/i.test(importSource) || /phosphor/i.test(importSource) || /feather/i.test(importSource);
+  const isNamedIcon = /(?:Icon|^[A-Z][a-zA-Z0-9]*Icon$|HugeiconsIcon)/.test(tagName);
+  const hasSizeProp = Boolean(attributes.size);
+  const isNonIconPrimitive = ["Button", "IconButton", "Input", "Dropdown", "Table", "Card", "Tabs", "Checkbox", "Avatar", "Skeleton"].includes(tagName);
+  const isIcon = (isIconModule || isNamedIcon || hasSizeProp) && !isNonIconPrimitive;
+  if (!isIcon) return;
+  if (attributes.size && attributes.size.initializer) {
+    const rawVal = attributes.size.initializer.getText(sourceFile).replace(/[{}"'\s]/g, "");
+    const parsed = parseFloat(rawVal);
+    if (!isNaN(parsed) && parsed < minAllowed) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "icon-size-min",
+        `Icon '<${tagName}>' has size of ${parsed}px, which is below the minimum allowed size of ${minAllowed}px. Icon sizes must strictly be ${minAllowed}px or larger.`,
+        lineSnippet
+      );
+      return;
+    }
+  }
+  if (attributes.className && attributes.className.initializer) {
+    const rawClass = attributes.className.initializer.getText(sourceFile);
+    const smallClassRegex = /\b(?:size|w|h)-(?:0|0\.5|1|1\.5|2|2\.5|3|3\.5)\b|\b(?:size|w|h)-\[(?:[1-9]|1[0-5])px\]/g;
+    const match = rawClass.match(smallClassRegex);
+    if (match) {
+      addViolation(
+        filePath,
+        pos.line,
+        pos.col,
+        "icon-size-min",
+        `Icon '<${tagName}>' has class '${match[0]}' specifying a dimension below ${minAllowed}px. Icon sizes must strictly be ${minAllowed}px or larger.`,
         lineSnippet
       );
     }
@@ -1423,7 +1476,7 @@ function checkTableCellInvariants(node, attributes, pos, filePath, addViolation,
                   childPos.line,
                   childPos.col,
                   "table-uniform-typography",
-                  `Mismatched table text size '${dec.core}' inside '<TableCell>'. In tables, all fonts must have standard 14px size ('text-sm').`,
+                  `Mismatched table text size '${dec.core}' inside '<TableCell>'. In tables, all fonts must have standard ${config2.tokens?.typography?.minFontSize || "13px"} size ('text-sm').`,
                   lineSnippet
                 );
               }
@@ -1797,22 +1850,26 @@ function runPythonRules(content, filePath, addViolation, config2) {
         const val = parseFloat(fontSizeMatch[1]);
         const unit = fontSizeMatch[2].toLowerCase();
         const px = unit === "rem" ? val * 16 : val;
-        if (px < 14 && config2.rules?.["font-size-min"] !== "off") {
+        const minFont = config2.tokens?.typography?.minFontSize || "13px";
+        const minPx = parseInt(minFont, 10) || 13;
+        const maxFont = config2.tokens?.typography?.maxFontSize || "32px";
+        const maxPx = parseInt(maxFont, 10) || 32;
+        if (px < minPx && config2.rules?.["font-size-min"] !== "off") {
           addViolation(
             filePath,
             lineNum,
             fontSizeMatch.index || 1,
             "font-size-min",
-            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) is smaller than 14px. Primary body font must strictly be standard 14px.`,
+            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) is smaller than ${minFont}. Primary body font must strictly be standard ${minFont}.`,
             line
           );
-        } else if (px > 32 && config2.rules?.["font-size-max"] !== "off") {
+        } else if (px > maxPx && config2.rules?.["font-size-max"] !== "off") {
           addViolation(
             filePath,
             lineNum,
             fontSizeMatch.index || 1,
             "font-size-max",
-            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) exceeds maximum allowed heading cap of 32px.`,
+            `Disallowed font-size '${fontSizeMatch[0]}' (${px}px) exceeds maximum allowed heading cap of ${maxFont}.`,
             line
           );
         }

@@ -7,7 +7,7 @@ export interface ComponentReplacement {
 }
 
 export interface TypographyConfig {
-  minFontSize?: string; // e.g. "14px"
+  minFontSize?: string; // e.g. "13px"
   maxFontSize?: string; // e.g. "32px"
   maxFontWeight?: number; // e.g. 500
   disallowArbitrarySizes?: boolean;
@@ -17,6 +17,9 @@ export interface TypographyConfig {
 
 export interface GeometryConfig {
   maxControlHeight?: number | string; // e.g. 36 or "36px"
+  minControlHeight?: number | string; // e.g. 32 or "32px"
+  chipHeight?: number | string; // e.g. 28 or "28px"
+  minIconSize?: number; // minimum icon dimension in pixels, strictly enforced (default 16px)
   allowedRadii?: string[]; // e.g. ["0px", "8px", "12px", "16px", "9999px"]
   radiiExceptions?: Record<string, string[]>; // e.g. { Checkbox: ["4px"] }
 }
@@ -48,6 +51,7 @@ export interface RulesConfig {
   "no-arbitrary-text-size"?: RuleSeverity;
   "no-uppercase-text"?: RuleSeverity;
   "control-height-max"?: RuleSeverity;
+  "icon-size-min"?: RuleSeverity;
   "corner-radius-allowed"?: RuleSeverity;
   "no-banned-colors"?: RuleSeverity;
   "no-raw-hex-colors"?: RuleSeverity;
@@ -105,7 +109,3 @@ export interface ScanResult {
   warningCount: number;
   componentInventory: Record<string, { active: boolean; fileCount: number }>;
 }
-
-
-
-

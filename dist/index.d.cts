@@ -58,6 +58,9 @@ interface TypographyConfig {
 }
 interface GeometryConfig {
     maxControlHeight?: number | string;
+    minControlHeight?: number | string;
+    chipHeight?: number | string;
+    minIconSize?: number;
     allowedRadii?: string[];
     radiiExceptions?: Record<string, string[]>;
 }
@@ -86,6 +89,7 @@ interface RulesConfig {
     "no-arbitrary-text-size"?: RuleSeverity;
     "no-uppercase-text"?: RuleSeverity;
     "control-height-max"?: RuleSeverity;
+    "icon-size-min"?: RuleSeverity;
     "corner-radius-allowed"?: RuleSeverity;
     "no-banned-colors"?: RuleSeverity;
     "no-raw-hex-colors"?: RuleSeverity;
